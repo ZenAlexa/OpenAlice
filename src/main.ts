@@ -8,26 +8,14 @@ import { TelegramPlugin } from './connectors/telegram/index.js'
 import { WebPlugin } from './connectors/web/index.js'
 import { McpAskPlugin } from './connectors/mcp-ask/index.js'
 import { createThinkingTools } from './extension/thinking-kit/index.js'
-import type { WalletExportState } from './extension/crypto-trading/index.js'
 import {
-  Wallet,
-  createCryptoTradingEngine,
-  createCryptoTradingTools,
-  createCryptoOperationDispatcher,
-  createCryptoWalletStateBridge,
-  createGuardPipeline,
-  resolveGuards,
-} from './extension/crypto-trading/index.js'
-import type { SecOperation, SecWalletExportState } from './extension/securities-trading/index.js'
-import {
-  SecWallet,
-  createSecuritiesTradingEngine,
-  createSecuritiesTradingTools,
-  createSecOperationDispatcher,
-  createSecWalletStateBridge,
-  createSecGuardPipeline,
-  resolveSecGuards,
-} from './extension/securities-trading/index.js'
+  AccountManager,
+  wireAccountTrading,
+  createAlpacaFromConfig,
+  createCcxtFromConfig,
+  createTradingTools,
+} from './extension/trading/index.js'
+import type { AccountSetup, GitExportState, ITradingGit } from './extension/trading/index.js'
 import { Brain, createBrainTools } from './extension/brain/index.js'
 import type { BrainExportState } from './extension/brain/index.js'
 import { createBrowserTools } from './extension/browser/index.js'
@@ -54,8 +42,10 @@ import { createCronEngine, createCronListener, createCronTools } from './task/cr
 import { createHeartbeat } from './task/heartbeat/index.js'
 import { NewsCollectorStore, NewsCollector, wrapNewsToolsForPiggyback, createNewsArchiveTools } from './extension/news-collector/index.js'
 
-const WALLET_FILE = resolve('data/crypto-trading/commit.json')
-const SEC_WALLET_FILE = resolve('data/securities-trading/commit.json')
+// ==================== Persistence paths ====================
+
+const CRYPTO_GIT_FILE = resolve('data/crypto-trading/commit.json')
+const SEC_GIT_FILE = resolve('data/securities-trading/commit.json')
 const BRAIN_FILE = resolve('data/brain/commit.json')
 const FRONTAL_LOBE_FILE = resolve('data/brain/frontal-lobe.md')
 const EMOTION_LOG_FILE = resolve('data/brain/emotion-log.md')
@@ -75,89 +65,85 @@ async function readWithDefault(target: string, defaultFile: string): Promise<str
   } catch { return '' }
 }
 
+/** Create a git commit persistence callback for a given file path. */
+function createGitPersister(filePath: string) {
+  return async (state: GitExportState) => {
+    await mkdir(dirname(filePath), { recursive: true })
+    await writeFile(filePath, JSON.stringify(state, null, 2))
+  }
+}
+
+/** Read saved git state from disk. */
+async function loadGitState(filePath: string): Promise<GitExportState | undefined> {
+  return readFile(filePath, 'utf-8')
+    .then((r) => JSON.parse(r) as GitExportState)
+    .catch(() => undefined)
+}
+
 async function main() {
   const config = await loadConfig()
 
-  // ==================== Infrastructure ====================
+  // ==================== Trading Account Manager ====================
 
-  // Start CCXT init in background — do NOT await here, letting everything else proceed immediately
-  const cryptoInitPromise = createCryptoTradingEngine(config).catch((err) => {
-    console.warn('crypto trading engine init failed (non-fatal, continuing without it):', err)
-    return null
-  })
+  const accountManager = new AccountManager()
+  // Mutable map: accountId → { setup, gitFilePath }
+  // Needed for reconnect (re-wiring) and git lookups.
+  const accountSetups = new Map<string, { setup: AccountSetup; gitFilePath: string }>()
 
-  // Run Securities init + all local file reads in parallel
-  const [
-    secResultOrNull,
-    savedState,
-    secSavedState,
-    brainExport,
-    persona,
-  ] = await Promise.all([
-    createSecuritiesTradingEngine(config).catch((err) => {
-      console.warn('securities trading engine init failed (non-fatal, continuing without it):', err)
-      return null
-    }),
-    readFile(WALLET_FILE, 'utf-8').then((r) => JSON.parse(r) as WalletExportState).catch(() => undefined),
-    readFile(SEC_WALLET_FILE, 'utf-8').then((r) => JSON.parse(r) as SecWalletExportState).catch(() => undefined),
+  // Helper: register an account's tools after wiring
+  const registerAccountTools = (setup: AccountSetup, toolGroupId: string) => {
+    toolCenter.register(
+      createTradingTools(setup.account, setup.git, setup.getGitState),
+      toolGroupId,
+    )
+  }
+
+  // ==================== Alpaca (securities) — sync init ====================
+
+  const alpacaAccount = createAlpacaFromConfig(config.securities)
+  let alpacaReady = false
+
+  if (alpacaAccount) {
+    try {
+      await alpacaAccount.init()
+      const savedState = await loadGitState(SEC_GIT_FILE)
+      const setup = wireAccountTrading(alpacaAccount, {
+        guards: config.securities.guards,
+        savedState,
+        onCommit: createGitPersister(SEC_GIT_FILE),
+      })
+      accountManager.addAccount(alpacaAccount)
+      accountSetups.set(alpacaAccount.id, { setup, gitFilePath: SEC_GIT_FILE })
+      alpacaReady = true
+      console.log(`trading: ${alpacaAccount.label} initialized`)
+    } catch (err) {
+      console.warn('trading: alpaca init failed (non-fatal):', err)
+    }
+  }
+
+  // ==================== CCXT (crypto) — async background init ====================
+
+  const ccxtAccount = createCcxtFromConfig(config.crypto)
+
+  // CCXT init is slow (loadMarkets with retries). Start in background, register tools when ready.
+  const ccxtInitPromise = ccxtAccount
+    ? (async () => {
+        try {
+          await ccxtAccount.init()
+          return ccxtAccount
+        } catch (err) {
+          console.warn('trading: ccxt init failed (non-fatal):', err)
+          return null
+        }
+      })()
+    : Promise.resolve(null)
+
+  // ==================== Brain ====================
+
+  const [brainExport, persona] = await Promise.all([
     readFile(BRAIN_FILE, 'utf-8').then((r) => JSON.parse(r) as BrainExportState).catch(() => undefined),
     readWithDefault(PERSONA_FILE, PERSONA_DEFAULT),
   ])
-
-  let secResultRef = secResultOrNull
-
-  // ==================== Commit callbacks ====================
-
-  const onCryptoCommit = async (state: WalletExportState) => {
-    await mkdir(resolve('data/crypto-trading'), { recursive: true })
-    await writeFile(WALLET_FILE, JSON.stringify(state, null, 2))
-  }
-
-  const onSecCommit = async (state: SecWalletExportState) => {
-    await mkdir(resolve('data/securities-trading'), { recursive: true })
-    await writeFile(SEC_WALLET_FILE, JSON.stringify(state, null, 2))
-  }
-
-  // ==================== Securities Trading ====================
-
-  const secWalletStateBridge = secResultRef
-    ? createSecWalletStateBridge(secResultRef.engine)
-    : undefined
-
-  const secGuards = resolveSecGuards(config.securities.guards)
-
-  const secWalletConfig = secResultRef
-    ? {
-        executeOperation: createSecGuardPipeline(
-          createSecOperationDispatcher(secResultRef.engine),
-          secResultRef.engine,
-          secGuards,
-        ),
-        getWalletState: secWalletStateBridge!,
-        onCommit: onSecCommit,
-      }
-    : {
-        executeOperation: async (_op: SecOperation) => {
-          throw new Error('Securities trading service not connected')
-        },
-        getWalletState: async () => {
-          throw new Error('Securities trading service not connected')
-        },
-        onCommit: onSecCommit,
-      }
-
-  const secWallet = secSavedState
-    ? SecWallet.restore(secSavedState, secWalletConfig)
-    : new SecWallet(secWalletConfig)
-
-  // Mutable wallet references — updated on reconnect so REST getters always return current instance
-  let currentCryptoWallet: InstanceType<typeof Wallet> | null = null
-  let currentSecWallet: InstanceType<typeof SecWallet> = secWallet
-
-  // Kept for shutdown cleanup reference (populated when CCXT resolves)
-  let cryptoResultRef: Awaited<ReturnType<typeof createCryptoTradingEngine>> = null
-
-  // ==================== Brain ====================
 
   const brainDir = resolve('data/brain')
   const brainOnCommit = async (state: BrainExportState) => {
@@ -226,10 +212,13 @@ async function main() {
 
   const toolCenter = new ToolCenter()
   toolCenter.register(createThinkingTools(), 'thinking')
-  // Crypto trading tools are injected later in the background when CCXT resolves
-  if (secResultRef) {
-    toolCenter.register(createSecuritiesTradingTools(secResultRef.engine, secWallet, secWalletStateBridge), 'securities-trading')
+
+  // Register Alpaca trading tools (CCXT tools registered later in background)
+  if (alpacaReady) {
+    const entry = accountSetups.get(alpacaAccount!.id)!
+    registerAccountTools(entry.setup, `trading-${alpacaAccount!.id}`)
   }
+
   toolCenter.register(createBrainTools(brain), 'brain')
   toolCenter.register(createBrowserTools(), 'browser')
   toolCenter.register(createCronTools(cronEngine), 'cron')
@@ -249,7 +238,7 @@ async function main() {
   }
   toolCenter.register(createAnalysisTools(equityClient, cryptoClient, currencyClient), 'analysis')
 
-  console.log(`tool-center: ${toolCenter.list().length} tools registered (crypto trading pending ccxt)`)
+  console.log(`tool-center: ${toolCenter.list().length} tools registered (ccxt pending)`)
 
   // ==================== AI Provider Chain ====================
 
@@ -302,86 +291,72 @@ async function main() {
     console.log(`news-collector: started (${config.newsCollector.feeds.length} feeds, every ${config.newsCollector.intervalMinutes}m)`)
   }
 
-  // ==================== Engine Reconnect ====================
+  // ==================== Account Reconnect ====================
 
-  let cryptoReconnecting = false
-  const reconnectCrypto = async (): Promise<ReconnectResult> => {
-    if (cryptoReconnecting) return { success: false, error: 'Reconnect already in progress' }
-    cryptoReconnecting = true
-    try {
-      const freshConfig = await loadConfig()
+  const reconnectingAccounts = new Set<string>()
 
-      // Create new engine FIRST — if this fails, old engine stays functional
-      const newResult = await createCryptoTradingEngine(freshConfig)
-      await cryptoResultRef?.close()
-      cryptoResultRef = newResult
-
-      if (!newResult) {
-        return { success: true, message: 'Crypto trading disabled (provider: none)' }
-      }
-
-      const bridge = createCryptoWalletStateBridge(newResult.engine)
-      const rawDispatcher = createCryptoOperationDispatcher(newResult.engine)
-      const guards = resolveGuards(freshConfig.crypto.guards)
-      const walletConfig = {
-        executeOperation: createGuardPipeline(rawDispatcher, newResult.engine, guards),
-        getWalletState: bridge,
-        onCommit: onCryptoCommit,
-      }
-      const savedWallet = await readFile(WALLET_FILE, 'utf-8')
-        .then((r) => JSON.parse(r) as WalletExportState).catch(() => undefined)
-      const newWallet = savedWallet ? Wallet.restore(savedWallet, walletConfig) : new Wallet(walletConfig)
-      currentCryptoWallet = newWallet
-
-      toolCenter.register(createCryptoTradingTools(newResult.engine, newWallet, bridge), 'crypto-trading')
-      console.log(`reconnect: crypto trading engine online (${toolCenter.list().length} tools)`)
-      return { success: true, message: 'Crypto trading engine reconnected' }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error('reconnect: crypto failed:', msg)
-      return { success: false, error: msg }
-    } finally {
-      cryptoReconnecting = false
+  const reconnectAccount = async (accountId: string): Promise<ReconnectResult> => {
+    if (reconnectingAccounts.has(accountId)) {
+      return { success: false, error: 'Reconnect already in progress' }
     }
-  }
-
-  let secReconnecting = false
-  const reconnectSecurities = async (): Promise<ReconnectResult> => {
-    if (secReconnecting) return { success: false, error: 'Reconnect already in progress' }
-    secReconnecting = true
+    reconnectingAccounts.add(accountId)
     try {
       const freshConfig = await loadConfig()
+      const entry = accountSetups.get(accountId)
 
-      const newResult = await createSecuritiesTradingEngine(freshConfig)
-      await secResultRef?.close()
-      secResultRef = newResult
+      // Determine provider type from current account or ID pattern
+      const currentAccount = accountManager.getAccount(accountId)
+      const provider = currentAccount?.provider ?? (accountId.startsWith('alpaca') ? 'alpaca' : 'ccxt')
 
-      if (!newResult) {
-        return { success: true, message: 'Securities trading disabled (provider: none)' }
+      // Close old account
+      if (currentAccount) {
+        await currentAccount.close()
+        accountManager.removeAccount(accountId)
+        accountSetups.delete(accountId)
       }
 
-      const bridge = createSecWalletStateBridge(newResult.engine)
-      const rawDispatcher = createSecOperationDispatcher(newResult.engine)
-      const guards = resolveSecGuards(freshConfig.securities.guards)
-      const walletConfig = {
-        executeOperation: createSecGuardPipeline(rawDispatcher, newResult.engine, guards),
-        getWalletState: bridge,
-        onCommit: onSecCommit,
+      if (provider === 'alpaca') {
+        const newAccount = createAlpacaFromConfig(freshConfig.securities)
+        if (!newAccount) {
+          return { success: true, message: 'Securities trading disabled (provider: none)' }
+        }
+        await newAccount.init()
+        const savedState = await loadGitState(SEC_GIT_FILE)
+        const setup = wireAccountTrading(newAccount, {
+          guards: freshConfig.securities.guards,
+          savedState,
+          onCommit: createGitPersister(SEC_GIT_FILE),
+        })
+        accountManager.addAccount(newAccount)
+        accountSetups.set(newAccount.id, { setup, gitFilePath: SEC_GIT_FILE })
+        registerAccountTools(setup, `trading-${newAccount.id}`)
+        console.log(`reconnect: ${newAccount.label} online (${toolCenter.list().length} tools)`)
+        return { success: true, message: `${newAccount.label} reconnected` }
+      } else {
+        // CCXT
+        const newAccount = createCcxtFromConfig(freshConfig.crypto)
+        if (!newAccount) {
+          return { success: true, message: 'Crypto trading disabled (provider: none)' }
+        }
+        await newAccount.init()
+        const savedState = await loadGitState(CRYPTO_GIT_FILE)
+        const setup = wireAccountTrading(newAccount, {
+          guards: freshConfig.crypto.guards,
+          savedState,
+          onCommit: createGitPersister(CRYPTO_GIT_FILE),
+        })
+        accountManager.addAccount(newAccount)
+        accountSetups.set(newAccount.id, { setup, gitFilePath: CRYPTO_GIT_FILE })
+        registerAccountTools(setup, `trading-${newAccount.id}`)
+        console.log(`reconnect: ${newAccount.label} online (${toolCenter.list().length} tools)`)
+        return { success: true, message: `${newAccount.label} reconnected` }
       }
-      const savedWallet = await readFile(SEC_WALLET_FILE, 'utf-8')
-        .then((r) => JSON.parse(r) as SecWalletExportState).catch(() => undefined)
-      const newWallet = savedWallet ? SecWallet.restore(savedWallet, walletConfig) : new SecWallet(walletConfig)
-      currentSecWallet = newWallet
-
-      toolCenter.register(createSecuritiesTradingTools(newResult.engine, newWallet, bridge), 'securities-trading')
-      console.log(`reconnect: securities trading engine online (${toolCenter.list().length} tools)`)
-      return { success: true, message: 'Securities trading engine reconnected' }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('reconnect: securities failed:', msg)
+      console.error(`reconnect: ${accountId} failed:`, msg)
       return { success: false, error: msg }
     } finally {
-      secReconnecting = false
+      reconnectingAccounts.delete(accountId)
     }
   }
 
@@ -468,14 +443,14 @@ async function main() {
     }
   }
 
+  // ==================== Engine Context ====================
+
   const ctx: EngineContext = {
-    config, connectorCenter, engine, cryptoEngine: null, eventLog, heartbeat, cronEngine,
-    reconnectCrypto, reconnectSecurities, reconnectConnectors,
-    getCryptoEngine: () => cryptoResultRef?.engine ?? null,
-    getSecuritiesEngine: () => secResultRef?.engine ?? null,
-    getCryptoWallet: () => currentCryptoWallet,
-    getSecWallet: () => currentSecWallet,
-    toolCenter,
+    config, connectorCenter, engine, eventLog, heartbeat, cronEngine, toolCenter,
+    accountManager,
+    getAccountGit: (id: string): ITradingGit | undefined => accountSetups.get(id)?.setup.git,
+    reconnectAccount,
+    reconnectConnectors,
   }
 
   for (const plugin of [...corePlugins, ...optionalPlugins.values()]) {
@@ -483,29 +458,24 @@ async function main() {
     console.log(`plugin started: ${plugin.name}`)
   }
 
-  console.log('engine: started (crypto trading tools pending ccxt init)')
+  console.log('engine: started (ccxt trading tools pending init)')
 
   // ==================== CCXT Background Injection ====================
-  // When the CCXT engine is ready, register crypto trading tools so the next
+  // When the CCXT account is ready, wire up TradingGit + register tools so the next
   // agent call picks them up automatically (VercelAIProvider re-checks tool count).
 
-  cryptoInitPromise.then((cryptoResult) => {
-    cryptoResultRef = cryptoResult
-    if (!cryptoResult) return
-    const bridge = createCryptoWalletStateBridge(cryptoResult.engine)
-    const rawDispatcher = createCryptoOperationDispatcher(cryptoResult.engine)
-    const guards = resolveGuards(config.crypto.guards)
-    const realWalletConfig = {
-      executeOperation: createGuardPipeline(rawDispatcher, cryptoResult.engine, guards),
-      getWalletState: bridge,
-      onCommit: onCryptoCommit,
-    }
-    const realWallet = savedState
-      ? Wallet.restore(savedState, realWalletConfig)
-      : new Wallet(realWalletConfig)
-    currentCryptoWallet = realWallet
-    toolCenter.register(createCryptoTradingTools(cryptoResult.engine, realWallet, bridge), 'crypto-trading')
-    console.log(`ccxt: crypto trading tools online (${toolCenter.list().length} tools total)`)
+  ccxtInitPromise.then(async (readyAccount) => {
+    if (!readyAccount) return
+    const savedState = await loadGitState(CRYPTO_GIT_FILE)
+    const setup = wireAccountTrading(readyAccount, {
+      guards: config.crypto.guards,
+      savedState,
+      onCommit: createGitPersister(CRYPTO_GIT_FILE),
+    })
+    accountManager.addAccount(readyAccount)
+    accountSetups.set(readyAccount.id, { setup, gitFilePath: CRYPTO_GIT_FILE })
+    registerAccountTools(setup, `trading-${readyAccount.id}`)
+    console.log(`ccxt: ${readyAccount.label} online (${toolCenter.list().length} tools total)`)
   })
 
   // ==================== Shutdown ====================
@@ -522,8 +492,7 @@ async function main() {
     }
     await newsStore.close()
     await eventLog.close()
-    await cryptoResultRef?.close()
-    await secResultRef?.close()
+    await accountManager.closeAll()
     process.exit(0)
   }
   process.on('SIGINT', shutdown)

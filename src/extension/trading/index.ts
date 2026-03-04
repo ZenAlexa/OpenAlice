@@ -73,3 +73,25 @@ export type {
   OperationGuard,
   GuardRegistryEntry,
 } from './guards/index.js'
+
+// Operation Dispatcher
+export { createOperationDispatcher } from './operation-dispatcher.js'
+
+// Wallet State Bridge
+export { createWalletStateBridge } from './wallet-state-bridge.js'
+
+// Factory (wiring + config helpers)
+export { wireAccountTrading, createAlpacaFromConfig, createCcxtFromConfig } from './factory.js'
+export type { AccountSetup } from './factory.js'
+
+// Unified Tool Factory
+export { createTradingTools } from './adapter.js'
+
+// TradingGit Tools (sub-set used by adapter.ts)
+export { createTradingGitTools } from './git/adapter.js'
+
+// Providers
+export { AlpacaAccount } from './providers/alpaca/index.js'
+export type { AlpacaAccountConfig } from './providers/alpaca/index.js'
+export { CcxtAccount } from './providers/ccxt/index.js'
+export type { CcxtAccountConfig } from './providers/ccxt/index.js'
