@@ -175,40 +175,6 @@ describe('createOperationDispatcher', () => {
     })
   })
 
-  // ==================== adjustLeverage ====================
-
-  describe('adjustLeverage', () => {
-    it('calls account.adjustLeverage when supported', async () => {
-      const op: Operation = {
-        action: 'adjustLeverage',
-        params: { symbol: 'BTCUSDT', newLeverage: 5 },
-      }
-
-      const result = await dispatch(op) as Record<string, unknown>
-
-      expect(account.adjustLeverage).toHaveBeenCalledTimes(1)
-      const [contract, leverage] = account.adjustLeverage.mock.calls[0]
-      expect(contract.symbol).toBe('BTCUSDT')
-      expect(leverage).toBe(5)
-      expect(result.success).toBe(true)
-    })
-
-    it('returns error when account does not support leverage', async () => {
-      const noLevAccount = new MockTradingAccount()
-      noLevAccount.adjustLeverage = undefined as unknown as typeof noLevAccount.adjustLeverage
-      const noLevDispatch = createOperationDispatcher(noLevAccount)
-
-      const op: Operation = {
-        action: 'adjustLeverage',
-        params: { symbol: 'BTCUSDT', newLeverage: 5 },
-      }
-
-      const result = await noLevDispatch(op) as Record<string, unknown>
-      expect(result.success).toBe(false)
-      expect(result.error).toContain('does not support')
-    })
-  })
-
   // ==================== unknown action ====================
 
   describe('unknown action', () => {

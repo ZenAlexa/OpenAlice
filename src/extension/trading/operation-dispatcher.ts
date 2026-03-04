@@ -32,7 +32,6 @@ export function createOperationDispatcher(account: ITradingAccount) {
           notional: op.params.notional as number | undefined,
           price: op.params.price as number | undefined,
           stopPrice: op.params.stopPrice as number | undefined,
-          leverage: op.params.leverage as number | undefined,
           reduceOnly: op.params.reduceOnly as boolean | undefined,
           timeInForce: (op.params.timeInForce as 'day' | 'gtc' | 'ioc' | 'fok') ?? 'day',
           extendedHours: op.params.extendedHours as boolean | undefined,
@@ -79,22 +78,6 @@ export function createOperationDispatcher(account: ITradingAccount) {
         const orderId = op.params.orderId as string
         const success = await account.cancelOrder(orderId)
         return { success, error: success ? undefined : 'Failed to cancel order' }
-      }
-
-      case 'adjustLeverage': {
-        // adjustLeverage is a provider-specific method (not on ITradingAccount)
-        // Duck-type check: only CcxtAccount (and similar) will have it
-        const fn = (account as unknown as Record<string, unknown>).adjustLeverage
-        if (typeof fn !== 'function') {
-          return { success: false, error: 'Account does not support leverage adjustment' }
-        }
-
-        const contract: Partial<Contract> = {}
-        if (op.params.aliceId) contract.aliceId = op.params.aliceId as string
-        if (op.params.symbol) contract.symbol = op.params.symbol as string
-
-        const newLeverage = op.params.newLeverage as number
-        return fn.call(account, contract as Contract, newLeverage)
       }
 
       default:

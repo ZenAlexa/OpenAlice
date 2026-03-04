@@ -227,15 +227,6 @@ export class CcxtAccount implements ITradingAccount {
     }
 
     try {
-      // Set leverage before order if requested
-      if (order.leverage && order.leverage > 1) {
-        try {
-          await this.exchange.setLeverage(order.leverage, ccxtSymbol)
-        } catch {
-          // Some exchanges don't support setLeverage; ignore
-        }
-      }
-
       const params: Record<string, unknown> = {}
       if (order.reduceOnly) params.reduceOnly = true
 
@@ -414,7 +405,6 @@ export class CcxtAccount implements ITradingAccount {
         type: (o.type ?? 'market') as Order['type'],
         qty: o.amount ?? 0,
         price: o.price ?? undefined,
-        leverage: undefined,
         reduceOnly: o.reduceOnly ?? false,
         status: this.mapOrderStatus(o.status),
         filledPrice: o.average ?? undefined,
@@ -533,34 +523,6 @@ Use this to evaluate liquidity and potential slippage before placing large order
         },
       }),
 
-      adjustLeverage: tool({
-        description: `Stage a leverage adjustment for a crypto trading pair (will execute on tradingPush).
-
-Adjust leverage without changing position size. This will adjust margin requirements.
-
-NOTE: This stages the operation. Call tradingCommit + tradingPush to execute.`,
-        inputSchema: z.object({
-          symbol: z.string().describe('Trading pair symbol'),
-          newLeverage: z
-            .number()
-            .int()
-            .min(1)
-            .max(20)
-            .describe('New leverage (1-20)'),
-          source: z.string().optional().describe(sourceDesc),
-        }),
-        execute: ({ symbol, newLeverage, source }) => {
-          const resolved = resolveCcxtOne(source)
-          if ('error' in resolved) return resolved
-          const { id } = resolved
-          const git = resolver.getGit(id)
-          if (!git) return { error: `No trading history for account "${id}"` }
-          return git.add({
-            action: 'adjustLeverage',
-            params: { symbol, newLeverage },
-          })
-        },
-      }),
     }
   }
 
@@ -602,21 +564,6 @@ NOTE: This stages the operation. Call tradingCommit + tradingPush to execute.`,
       bids: book.bids.map(([p, a]) => [p ?? 0, a ?? 0] as OrderBookLevel),
       asks: book.asks.map(([p, a]) => [p ?? 0, a ?? 0] as OrderBookLevel),
       timestamp: new Date(book.timestamp ?? Date.now()),
-    }
-  }
-
-  async adjustLeverage(contract: Contract, leverage: number): Promise<{ success: boolean; error?: string }> {
-    this.ensureInit()
-    this.ensureWritable()
-
-    const ccxtSymbol = this.contractToCcxt(contract)
-    if (!ccxtSymbol) return { success: false, error: 'Cannot resolve contract to CCXT symbol' }
-
-    try {
-      await this.exchange.setLeverage(leverage, ccxtSymbol)
-      return { success: true }
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   }
 

@@ -484,13 +484,6 @@ NOTE: This stages the operation. Call tradingCommit + tradingPush to execute.`,
           .describe(
             'Stop trigger price (required for stop and stop_limit orders)',
           ),
-        leverage: z
-          .number()
-          .int()
-          .min(1)
-          .max(20)
-          .optional()
-          .describe('Leverage (1-20, default 1)'),
         reduceOnly: z
           .boolean()
           .optional()
@@ -513,7 +506,6 @@ NOTE: This stages the operation. Call tradingCommit + tradingPush to execute.`,
         notional,
         price,
         stopPrice,
-        leverage,
         reduceOnly,
         timeInForce,
         extendedHours,
@@ -530,7 +522,6 @@ NOTE: This stages the operation. Call tradingCommit + tradingPush to execute.`,
             notional,
             price,
             stopPrice,
-            leverage,
             reduceOnly,
             timeInForce,
             extendedHours,

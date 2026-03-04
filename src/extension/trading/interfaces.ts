@@ -39,7 +39,6 @@ export interface OrderRequest {
   notional?: number
   price?: number
   stopPrice?: number
-  leverage?: number
   reduceOnly?: boolean
   timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok'
   extendedHours?: boolean
@@ -62,7 +61,6 @@ export interface Order {
   qty: number
   price?: number
   stopPrice?: number
-  leverage?: number
   reduceOnly?: boolean
   timeInForce?: 'day' | 'gtc' | 'ioc' | 'fok'
   extendedHours?: boolean

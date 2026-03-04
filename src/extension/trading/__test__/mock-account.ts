@@ -143,9 +143,6 @@ export class MockTradingAccount implements ITradingAccount {
       nextClose: new Date('2025-01-01T21:00:00Z'),
     })
 
-  adjustLeverage = vi.fn<(contract: Contract, leverage: number) => Promise<{ success: boolean; error?: string }>>()
-    .mockResolvedValue({ success: true })
-
   constructor(options: MockTradingAccountOptions = {}) {
     this.id = options.id ?? 'mock-paper'
     this.provider = options.provider ?? 'mock'
