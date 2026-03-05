@@ -51,6 +51,9 @@ export class AlpacaAccount implements ITradingAccount {
 
   // ---- Lifecycle ----
 
+  private static readonly MAX_INIT_RETRIES = 5
+  private static readonly INIT_RETRY_BASE_MS = 1000
+
   async init(): Promise<void> {
     this.client = new Alpaca({
       keyId: this.config.apiKey,
@@ -58,10 +61,24 @@ export class AlpacaAccount implements ITradingAccount {
       paper: this.config.paper,
     })
 
-    const account = await this.client.getAccount() as AlpacaAccountRaw
-    console.log(
-      `AlpacaAccount[${this.id}]: connected (paper=${this.config.paper}, equity=$${parseFloat(account.equity).toFixed(2)})`,
-    )
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= AlpacaAccount.MAX_INIT_RETRIES; attempt++) {
+      try {
+        const account = await this.client.getAccount() as AlpacaAccountRaw
+        console.log(
+          `AlpacaAccount[${this.id}]: connected (paper=${this.config.paper}, equity=$${parseFloat(account.equity).toFixed(2)})`,
+        )
+        return
+      } catch (err) {
+        lastErr = err
+        if (attempt < AlpacaAccount.MAX_INIT_RETRIES) {
+          const delay = AlpacaAccount.INIT_RETRY_BASE_MS * 2 ** (attempt - 1)
+          console.warn(`AlpacaAccount[${this.id}]: init attempt ${attempt}/${AlpacaAccount.MAX_INIT_RETRIES} failed, retrying in ${delay}ms...`)
+          await new Promise(r => setTimeout(r, delay))
+        }
+      }
+    }
+    throw lastErr
   }
 
   async close(): Promise<void> {
