@@ -350,7 +350,7 @@ export async function loadTradingConfig(): Promise<{
   return migrateLegacyTradingConfig()
 }
 
-/** Derive platform+account config from old crypto.json + securities.json (read-only, no writes). */
+/** Derive platform+account config from old crypto.json + securities.json, then write to disk. */
 async function migrateLegacyTradingConfig(): Promise<{
   platforms: PlatformConfig[]
   accounts: AccountConfig[]
@@ -404,6 +404,13 @@ async function migrateLegacyTradingConfig(): Promise<{
       guards: securities.guards,
     })
   }
+
+  // Seed to disk so the user can edit the new format directly
+  await mkdir(CONFIG_DIR, { recursive: true })
+  await Promise.all([
+    writeFile(resolve(CONFIG_DIR, 'platforms.json'), JSON.stringify(platforms, null, 2) + '\n'),
+    writeFile(resolve(CONFIG_DIR, 'accounts.json'), JSON.stringify(accounts, null, 2) + '\n'),
+  ])
 
   return { platforms, accounts }
 }
