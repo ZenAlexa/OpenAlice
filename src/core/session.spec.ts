@@ -268,12 +268,12 @@ describe('toChatHistory', () => {
         { type: 'tool_use', id: 't1', name: 'Search', input: { q: 'test' } },
       ]),
     ])
-    // Should produce both a tool_calls item and a text item
+    // Should produce text before tool_calls (边想边做)
     expect(items).toHaveLength(2)
-    expect(items[0].kind).toBe('tool_calls')
-    expect(items[1].kind).toBe('text')
-    if (items[1].kind === 'text') {
-      expect(items[1].text).toBe('Let me check')
+    expect(items[0].kind).toBe('text')
+    expect(items[1].kind).toBe('tool_calls')
+    if (items[0].kind === 'text') {
+      expect(items[0].text).toBe('Let me check')
     }
   })
 

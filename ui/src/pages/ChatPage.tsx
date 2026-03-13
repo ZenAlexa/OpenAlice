@@ -326,26 +326,29 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
             <div className={`${messages.length > 0 ? 'mt-5' : ''}`}>
               {streamSegments.length > 0 ? (
                 <>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center text-accent shrink-0">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-                      </svg>
-                    </div>
-                    <span className="text-[12px] text-text-muted font-medium">Alice</span>
-                  </div>
-                  {streamSegments.map((seg, i) =>
-                    seg.kind === 'tools' ? (
+                  {streamSegments.map((seg, i) => {
+                    if (seg.kind === 'tools') {
+                      const allDone = seg.tools.every((t) => t.status === 'done')
+                      return (
+                        <div key={i} className={i > 0 ? 'mt-1' : ''}>
+                          {allDone ? (
+                            <ToolCallGroup calls={seg.tools.map((t) => ({
+                              name: t.name,
+                              input: typeof t.input === 'string' ? t.input : JSON.stringify(t.input ?? ''),
+                              result: t.result,
+                            }))} />
+                          ) : (
+                            <StreamingToolGroup tools={seg.tools} />
+                          )}
+                        </div>
+                      )
+                    }
+                    return (
                       <div key={i} className={i > 0 ? 'mt-1' : ''}>
-                        <StreamingToolGroup tools={seg.tools} />
+                        <ChatMessage role="assistant" text={seg.text} isGrouped={i > 0} />
                       </div>
-                    ) : (
-                      <div key={i} className={i > 0 ? 'mt-1' : ''}>
-                        <ChatMessage role="assistant" text={seg.text} isGrouped />
-                      </div>
-                    ),
-                  )}
-                  {/* Show thinking dots when last segment is tools with all done, or tools still running */}
+                    )
+                  })}
                   {(() => {
                     const last = streamSegments[streamSegments.length - 1]
                     if (last?.kind === 'tools' && last.tools.every((t) => t.status === 'done')) {

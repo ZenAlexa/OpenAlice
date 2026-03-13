@@ -508,13 +508,13 @@ export function toChatHistory(entries: SessionEntry[]): ChatHistoryItem[] {
         result: resultMap.get(tu.id) ? truncate(resultMap.get(tu.id)!, TOOL_SUMMARY_MAX) : undefined,
       }))
 
-      items.push({ kind: 'tool_calls', calls, timestamp: entry.timestamp })
-
-      // If there were also text blocks in this same entry, emit them separately.
+      // Text before tools (边想边做 — thinking then doing).
       const text = textBlocks.map((b) => b.text).join('\n')
       if (text.trim() || media) {
         items.push({ kind: 'text', role: message.role as 'user' | 'assistant', text, timestamp: entry.timestamp, metadata: entry.metadata, media })
       }
+
+      items.push({ kind: 'tool_calls', calls, timestamp: entry.timestamp })
       continue
     }
 
