@@ -11,8 +11,8 @@
  *   - Message persistence (intermediate tool messages + final response)
  */
 
-import type { AskOptions, ProviderResult, ProviderEvent, GenerateOpts } from './ai-provider.js'
-import { GenerateRouter, StreamableResult } from './ai-provider.js'
+import type { AskOptions, ProviderResult, ProviderEvent, GenerateOpts } from './ai-provider-manager.js'
+import { GenerateRouter, StreamableResult } from './ai-provider-manager.js'
 import type { ISessionStore, ContentBlock } from './session.js'
 import { toTextHistory, toModelMessages } from './session.js'
 import type { CompactionConfig } from './compaction.js'
@@ -20,8 +20,7 @@ import { compactIfNeeded } from './compaction.js'
 import type { MediaAttachment } from './types.js'
 import { extractMediaFromToolResultContent } from './media.js'
 import { persistMedia } from './media-store.js'
-import { logToolCall } from '../ai-providers/log-tool-call.js'
-import { stripImageData, buildChatHistoryPrompt, DEFAULT_MAX_HISTORY } from './provider-utils.js'
+import { logToolCall, stripImageData, buildChatHistoryPrompt, DEFAULT_MAX_HISTORY } from '../ai-providers/utils.js'
 
 // ==================== Types ====================
 
