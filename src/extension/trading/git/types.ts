@@ -196,9 +196,9 @@ export interface SimulatePriceChangeResult {
 /** Extract the symbol from any Operation variant. */
 export function getOperationSymbol(op: Operation): string {
   switch (op.action) {
-    case 'placeOrder': return op.contract.symbol || op.contract.aliceId || 'unknown'
+    case 'placeOrder': return op.contract?.symbol || op.contract?.aliceId || 'unknown'
     case 'modifyOrder': return 'unknown' // modifyOrder doesn't carry contract
-    case 'closePosition': return op.contract.symbol || op.contract.aliceId || 'unknown'
+    case 'closePosition': return op.contract?.symbol || op.contract?.aliceId || 'unknown'
     case 'cancelOrder': return 'unknown'
     case 'syncOrders': return 'unknown'
   }

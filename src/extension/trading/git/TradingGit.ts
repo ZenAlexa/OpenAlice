@@ -191,9 +191,9 @@ export class TradingGit implements ITradingGit {
   private formatOperationChange(op: Operation, result?: OperationResult): string {
     switch (op.action) {
       case 'placeOrder': {
-        const side = op.order.action || 'unknown' // BUY / SELL
-        const qty = op.order.totalQuantity
-        const cashQty = op.order.cashQty
+        const side = op.order?.action || 'unknown' // BUY / SELL
+        const qty = op.order?.totalQuantity
+        const cashQty = op.order?.cashQty
         const hasQty = qty && !qty.equals(UNSET_DECIMAL)
         const hasCash = cashQty !== UNSET_DOUBLE && cashQty > 0
         const sizeStr = hasCash ? `$${cashQty}` : hasQty ? `${qty}` : '?'
