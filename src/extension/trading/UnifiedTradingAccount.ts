@@ -9,7 +9,7 @@
 
 import Decimal from 'decimal.js'
 import { Contract, Order, ContractDescription, ContractDetails } from '@traderalice/ibkr'
-import type { IBroker, AccountInfo, Position, OpenOrder, PlaceOrderResult, Quote, MarketClock, AccountCapabilities } from './interfaces.js'
+import type { IBroker, AccountInfo, Position, OpenOrder, PlaceOrderResult, Quote, MarketClock, AccountCapabilities } from './brokers/types.js'
 import { TradingGit } from './git/TradingGit.js'
 import type {
   Operation,

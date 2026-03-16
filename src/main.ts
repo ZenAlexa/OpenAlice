@@ -15,7 +15,7 @@ import {
   createCcxtProviderTools,
   createTradingTools,
   createPlatformFromConfig,
-  createAccountFromConfig,
+  createBrokerFromConfig,
   validatePlatformRefs,
 } from './extension/trading/index.js'
 import type { GitExportState, IPlatform } from './extension/trading/index.js'
@@ -124,7 +124,7 @@ async function main() {
     accountCfg: { id: string; platformId: string; guards: Array<{ type: string; options: Record<string, unknown> }> },
     platform: IPlatform,
   ): Promise<boolean> {
-    const broker = createAccountFromConfig(platform, accountCfg)
+    const broker = createBrokerFromConfig(platform, accountCfg)
     try {
       await broker.init()
     } catch (err) {

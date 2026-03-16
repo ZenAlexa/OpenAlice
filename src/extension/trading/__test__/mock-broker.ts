@@ -16,7 +16,7 @@ import type {
   OpenOrder,
   Quote,
   MarketClock,
-} from '../interfaces.js'
+} from '../brokers/types.js'
 import '../contract-ext.js'
 
 // ==================== Defaults ====================

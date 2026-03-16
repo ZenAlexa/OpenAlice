@@ -8,7 +8,7 @@ import { createGuardPipeline } from './guard-pipeline.js'
 import { resolveGuards, registerGuard } from './registry.js'
 import type { GuardContext, OperationGuard } from './types.js'
 import type { Operation } from '../git/types.js'
-import type { AccountInfo, Position } from '../interfaces.js'
+import type { AccountInfo, Position } from '../brokers/types.js'
 import { MockBroker, makeContract, makePosition } from '../__test__/mock-broker.js'
 import '../contract-ext.js'
 

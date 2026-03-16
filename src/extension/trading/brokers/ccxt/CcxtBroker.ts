@@ -22,7 +22,7 @@ import type {
   FundingRate,
   OrderBook,
   OrderBookLevel,
-} from '../../interfaces.js'
+} from '../types.js'
 import '../../contract-ext.js'
 import type { CcxtBrokerConfig, CcxtMarket } from './ccxt-types.js'
 import { MAX_INIT_RETRIES, INIT_RETRY_BASE_MS } from './ccxt-types.js'

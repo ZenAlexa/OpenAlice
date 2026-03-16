@@ -5,7 +5,7 @@
  * With discriminated union operations, this is now a simple forwarding layer.
  */
 
-import type { IBroker } from './interfaces.js'
+import type { IBroker } from './brokers/types.js'
 import type { Operation } from './git/types.js'
 
 export function createOperationDispatcher(account: IBroker) {

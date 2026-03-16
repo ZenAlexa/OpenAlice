@@ -7,7 +7,7 @@
 
 import type { Contract, Order, OrderCancel, Execution, OrderState } from '@traderalice/ibkr'
 import type Decimal from 'decimal.js'
-import type { Position, OpenOrder } from '../interfaces.js'
+import type { Position, OpenOrder } from '../brokers/types.js'
 import '../contract-ext.js'
 
 // ==================== Commit Hash ====================

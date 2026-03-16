@@ -7,7 +7,7 @@
  */
 
 import type { Operation } from '../git/types.js'
-import type { IBroker } from '../interfaces.js'
+import type { IBroker } from '../brokers/types.js'
 import type { OperationGuard, GuardContext } from './types.js'
 
 export function createGuardPipeline(

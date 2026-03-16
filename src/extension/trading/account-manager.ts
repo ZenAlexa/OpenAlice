@@ -6,7 +6,7 @@
  */
 
 import type { Contract, ContractDescription, ContractDetails } from '@traderalice/ibkr'
-import type { AccountCapabilities } from './interfaces.js'
+import type { AccountCapabilities } from './brokers/types.js'
 import type { UnifiedTradingAccount } from './UnifiedTradingAccount.js'
 import './contract-ext.js'
 

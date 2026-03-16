@@ -5,7 +5,7 @@
  * Used as the TradingGitConfig.getGitState callback.
  */
 
-import type { IBroker } from './interfaces.js'
+import type { IBroker } from './brokers/types.js'
 import type { GitState } from './git/types.js'
 
 export function createWalletStateBridge(account: IBroker) {

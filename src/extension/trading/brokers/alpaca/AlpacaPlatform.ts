@@ -1,4 +1,4 @@
-import type { IPlatform, PlatformCredentials } from '../../platform.js'
+import type { IPlatform, PlatformCredentials } from '../factory.js'
 import { AlpacaBroker } from './AlpacaBroker.js'
 
 export interface AlpacaPlatformConfig {

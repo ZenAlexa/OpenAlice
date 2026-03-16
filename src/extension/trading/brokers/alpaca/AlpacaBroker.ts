@@ -20,7 +20,7 @@ import type {
   OpenOrder,
   Quote,
   MarketClock,
-} from '../../interfaces.js'
+} from '../types.js'
 import '../../contract-ext.js'
 import type {
   AlpacaBrokerConfig,

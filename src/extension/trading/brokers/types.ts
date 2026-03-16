@@ -1,7 +1,7 @@
 /**
- * Unified Trading interfaces — IBKR types as source of truth
+ * Broker types — IBroker interface and associated data types.
  *
- * All providers (Alpaca, CCXT, IBKR, ...) implement IBroker.
+ * All broker implementations (Alpaca, CCXT, IBKR, ...) implement IBroker.
  * Order/Contract/Execution/OrderState come directly from @traderalice/ibkr.
  * Only types that IBKR doesn't define (Position, AccountInfo, Quote, etc.)
  * are defined here, with field names aligned to IBKR conventions.
@@ -9,14 +9,13 @@
 
 import type { Contract, ContractDescription, ContractDetails, Order, OrderState, Execution, OrderCancel } from '@traderalice/ibkr'
 import type Decimal from 'decimal.js'
-import './contract-ext.js'
+import '../contract-ext.js'
 
 // ==================== Position ====================
 
 /**
  * Unified position/holding.
  * Field names aligned with IBKR EWrapper.updatePortfolio() parameters.
- * Stocks are the special case: side='long', leverage=1, no margin/liquidation.
  */
 export interface Position {
   contract: Contract
