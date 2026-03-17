@@ -461,7 +461,7 @@ export class CcxtBroker implements IBroker {
     }
 
     try {
-      const closed = await this.exchange.fetchClosedOrders(undefined, undefined, 50)
+      const closed = await this.exchange.fetchClosedOrders()
       allOrders.push(...closed)
     } catch {
       // Some exchanges don't support fetchClosedOrders
@@ -485,11 +485,11 @@ export class CcxtBroker implements IBroker {
     if (!ccxtSymbol) return null
 
     try {
-      // fetchOrder has limitations on some exchanges (e.g. Bybit's 500 order limit).
-      // Fall back to searching open + closed orders by symbol.
+      // Bybit: fetchClosedOrders without since/limit returns ~20 most recent.
+      // With explicit limit but no since, returns oldest-first. Don't pass limit.
       const [open, closed] = await Promise.all([
         this.exchange.fetchOpenOrders(ccxtSymbol).catch(() => [] as CcxtOrder[]),
-        this.exchange.fetchClosedOrders(ccxtSymbol, undefined, 50).catch(() => [] as CcxtOrder[]),
+        this.exchange.fetchClosedOrders(ccxtSymbol).catch(() => [] as CcxtOrder[]),
       ])
       const found = [...open, ...closed].find(o => o.id === orderId)
       return found ? this.convertCcxtOrder(found) : null

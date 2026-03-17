@@ -7,35 +7,25 @@
  * Run: pnpm test:e2e
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import Decimal from 'decimal.js'
 import { Order } from '@traderalice/ibkr'
-import { loadTestAccounts, filterByProvider, type TestAccount } from './setup.js'
+import { getTestAccounts, filterByProvider } from './setup.js'
 import type { IBroker } from '../../brokers/types.js'
 import '../../contract-ext.js'
 
 let broker: IBroker | null = null
-let accountLabel = ''
 
 beforeAll(async () => {
-  const all = await loadTestAccounts()
-  const ccxtAccounts = filterByProvider(all, 'ccxt')
-  const bybitAccount = ccxtAccounts.find(a => a.id.includes('bybit'))
-
-  if (!bybitAccount) {
+  const all = await getTestAccounts()
+  const bybit = filterByProvider(all, 'ccxt').find(a => a.id.includes('bybit'))
+  if (!bybit) {
     console.log('e2e: No Bybit sandbox/demo account configured, skipping')
     return
   }
-
-  accountLabel = bybitAccount.label
-  broker = bybitAccount.broker
-  await broker.init()
-  console.log(`e2e: ${accountLabel} connected`)
+  broker = bybit.broker
+  console.log(`e2e: ${bybit.label} connected`)
 }, 60_000)
-
-afterAll(async () => {
-  if (broker) await broker.close()
-})
 
 describe('CcxtBroker — Bybit e2e', () => {
   it('has a configured Bybit account (or skips entire suite)', () => {
@@ -76,6 +66,19 @@ describe('CcxtBroker — Bybit e2e', () => {
     const ethPerp = matches.find(m => m.contract.aliceId?.includes('USDT'))
     if (!ethPerp) { console.log('  no ETH/USDT perp, skipping'); return }
 
+    // Diagnostic: see raw CCXT createOrder response
+    const exchange = (broker as any).exchange
+    const rawOrder = await exchange.createOrder('ETH/USDT:USDT', 'market', 'buy', 0.01)
+    console.log('  CCXT raw createOrder:', JSON.stringify({
+      id: rawOrder.id, status: rawOrder.status, filled: rawOrder.filled,
+      average: rawOrder.average, amount: rawOrder.amount, remaining: rawOrder.remaining,
+      datetime: rawOrder.datetime, type: rawOrder.type, side: rawOrder.side,
+    }))
+
+    // Clean up diagnostic order
+    await broker.closePosition(ethPerp.contract, new Decimal('0.01'))
+
+    // Now test through our placeOrder
     const order = new Order()
     order.action = 'BUY'
     order.orderType = 'MKT'
@@ -84,14 +87,14 @@ describe('CcxtBroker — Bybit e2e', () => {
     const result = await broker.placeOrder(ethPerp.contract, order)
     expect(result.success).toBe(true)
     expect(result.orderId).toBeDefined()
-    console.log(`  buy orderId=${result.orderId}, execution=${!!result.execution}`)
+    console.log(`  placeOrder result: orderId=${result.orderId}, execution=${!!result.execution}, orderState=${result.orderState?.status}`)
 
     if (result.execution) {
       expect(result.execution.shares.toNumber()).toBeGreaterThan(0)
       expect(result.execution.price).toBeGreaterThan(0)
       console.log(`  filled: ${result.execution.shares} @ $${result.execution.price}`)
     }
-  }, 15_000)
+  }, 30_000)
 
   it('verifies ETH position exists after buy', async () => {
     if (!broker) return
@@ -130,8 +133,22 @@ describe('CcxtBroker — Bybit e2e', () => {
     if (!placed.orderId) return
 
     const detail = await broker.getOrder(placed.orderId)
+    console.log(`  getOrder(${placed.orderId}): ${detail ? `status=${detail.orderState.status}` : 'null'}`)
+
+    // Also try raw fetchOrder for diagnostics
+    const exchange = (broker as any).exchange
+    const ccxtSymbol = (broker as any).orderSymbolCache.get(placed.orderId)
+    console.log(`  orderSymbolCache for ${placed.orderId}: ${ccxtSymbol ?? 'MISSING'}`)
+    if (ccxtSymbol) {
+      try {
+        const raw = await exchange.fetchOrder(placed.orderId, ccxtSymbol)
+        console.log(`  raw fetchOrder: status=${raw.status}, filled=${raw.filled}`)
+      } catch (err: any) {
+        console.log(`  raw fetchOrder ERROR: ${err.message}`)
+      }
+    }
+
     expect(detail).not.toBeNull()
-    console.log(`  order ${placed.orderId} status=${detail?.orderState.status}`)
 
     // Clean up
     await broker.closePosition(ethPerp.contract, new Decimal('0.01'))

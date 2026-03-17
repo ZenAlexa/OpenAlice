@@ -1,42 +1,21 @@
 /**
- * Raw CCXT diagnostic — no broker wrapper, just exchange methods.
+ * Raw CCXT diagnostic — uses the shared broker's exchange instance.
  * Purpose: understand what Bybit demoTrading actually returns.
  */
 
-import { describe, it, beforeAll, afterAll } from 'vitest'
-import ccxt from 'ccxt'
-import { loadTradingConfig } from '@/core/config.js'
+import { describe, it, beforeAll } from 'vitest'
+import type { Exchange } from 'ccxt'
+import { getTestAccounts, filterByProvider } from './setup.js'
 
-let exchange: InstanceType<typeof ccxt.bybit> | null = null
+let exchange: Exchange | null = null
 
 beforeAll(async () => {
-  const { platforms, accounts } = await loadTradingConfig()
-  const bybitPlatform = platforms.find(p => p.type === 'ccxt' && p.exchange === 'bybit')
-  if (!bybitPlatform) { console.log('No Bybit platform configured'); return }
-  const bybitAccount = accounts.find(a => a.platformId === bybitPlatform.id && a.apiKey)
-  if (!bybitAccount) { console.log('No Bybit account with API key'); return }
-
-  exchange = new ccxt.bybit({
-    apiKey: bybitAccount.apiKey,
-    secret: bybitAccount.apiSecret,
-    enableRateLimit: true,
-    options: { fetchMarkets: { types: ['spot', 'linear', 'inverse'] } },
-  })
-
-  if ('sandbox' in bybitPlatform && bybitPlatform.sandbox) {
-    exchange.setSandboxMode(true)
-  }
-  if ('demoTrading' in bybitPlatform && bybitPlatform.demoTrading) {
-    (exchange as any).enableDemoTrading(true)
-  }
-
-  await exchange.loadMarkets()
-  console.log(`Connected to Bybit, ${Object.keys(exchange.markets).length} markets`)
-}, 30_000)
-
-afterAll(async () => {
-  // no-op
-})
+  const all = await getTestAccounts()
+  const bybit = filterByProvider(all, 'ccxt').find(a => a.id.includes('bybit'))
+  if (!bybit) { console.log('No Bybit account, skipping diagnostic'); return }
+  exchange = (bybit.broker as any).exchange
+  console.log(`Diagnostic: using ${bybit.label}'s exchange (${Object.keys(exchange!.markets).length} markets)`)
+}, 60_000)
 
 describe('Raw CCXT Bybit diagnostic', () => {
   it('createOrder → inspect full response', async () => {
@@ -62,6 +41,9 @@ describe('Raw CCXT Bybit diagnostic', () => {
       fee: result.fee,
       info: result.info, // raw exchange response
     }, null, 2))
+
+    // Clean up
+    await exchange.createOrder('ETH/USDT:USDT', 'market', 'sell', 0.01, undefined, { reduceOnly: true }).catch(() => {})
   }, 15_000)
 
   it('fetchClosedOrders → inspect ids and format', async () => {
@@ -103,7 +85,6 @@ describe('Raw CCXT Bybit diagnostic', () => {
   it('compare orderId format: spot vs perp', async () => {
     if (!exchange) return
 
-    // Check if spot market exists
     const hasSpot = !!exchange.markets['ETH/USDT']
     const hasPerp = !!exchange.markets['ETH/USDT:USDT']
     console.log(`\n=== spot ETH/USDT exists: ${hasSpot}, perp ETH/USDT:USDT exists: ${hasPerp} ===`)
@@ -111,7 +92,6 @@ describe('Raw CCXT Bybit diagnostic', () => {
     if (hasPerp) {
       const perpOrder = await exchange.createOrder('ETH/USDT:USDT', 'market', 'buy', 0.01)
       console.log(`perp orderId: ${perpOrder.id} (type: ${typeof perpOrder.id})`)
-      // Clean up
       await exchange.createOrder('ETH/USDT:USDT', 'market', 'sell', 0.01, undefined, { reduceOnly: true }).catch(() => {})
     }
 
@@ -136,28 +116,36 @@ describe('Raw CCXT Bybit diagnostic', () => {
     }
   })
 
-  it('createOrder → then immediately fetchClosedOrders → find it?', async () => {
+  it('fetchClosedOrders: no limit vs with since', async () => {
     if (!exchange) return
 
+    // 1. No limit — how many do we get?
+    const noLimit = await exchange.fetchClosedOrders('ETH/USDT:USDT')
+    console.log(`\n=== fetchClosedOrders (no limit): ${noLimit.length} orders ===`)
+    if (noLimit.length > 0) {
+      console.log(`  oldest: ${noLimit[0].datetime} id=${noLimit[0].id}`)
+      console.log(`  newest: ${noLimit[noLimit.length - 1].datetime} id=${noLimit[noLimit.length - 1].id}`)
+    }
+
+    // 2. With since = 2 minutes ago
+    const since = Date.now() - 2 * 60 * 1000
+    const recent = await exchange.fetchClosedOrders('ETH/USDT:USDT', since)
+    console.log(`\nfetchClosedOrders (since 2min ago): ${recent.length} orders`)
+    for (const o of recent.slice(0, 5)) {
+      console.log(`  id=${o.id} status=${o.status} datetime=${o.datetime}`)
+    }
+
+    // 3. Place an order, then query with since
     const placed = await exchange.createOrder('ETH/USDT:USDT', 'market', 'buy', 0.01)
-    console.log(`\n=== placed id: ${placed.id} (type: ${typeof placed.id}) ===`)
+    console.log(`\nplaced: ${placed.id}`)
+    await new Promise(r => setTimeout(r, 500))
 
-    // Small delay to let exchange process
-    await new Promise(r => setTimeout(r, 1000))
-
-    const closed = await exchange.fetchClosedOrders('ETH/USDT:USDT', undefined, 10)
-    console.log(`fetchClosedOrders returned ${closed.length} orders`)
-
-    const ids = closed.map(o => o.id)
-    console.log(`ids: ${JSON.stringify(ids)}`)
-
-    const found = closed.find(o => o.id === placed.id)
-    console.log(`match by === : ${found ? 'FOUND' : 'NOT FOUND'}`)
-
-    const foundStr = closed.find(o => String(o.id) === String(placed.id))
-    console.log(`match by String(): ${foundStr ? 'FOUND' : 'NOT FOUND'}`)
+    const afterPlace = await exchange.fetchClosedOrders('ETH/USDT:USDT', Date.now() - 10_000)
+    console.log(`fetchClosedOrders (since 10s ago): ${afterPlace.length} orders`)
+    const found = afterPlace.find(o => o.id === placed.id)
+    console.log(`match: ${found ? `FOUND status=${found.status}` : 'NOT FOUND'}`)
 
     // Clean up
-    await exchange.createOrder('ETH/USDT:USDT', 'market', 'sell', 0.02, undefined, { reduceOnly: true }).catch(() => {})
+    await exchange.createOrder('ETH/USDT:USDT', 'market', 'sell', 0.01, undefined, { reduceOnly: true }).catch(() => {})
   }, 30_000)
 })

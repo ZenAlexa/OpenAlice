@@ -1,10 +1,11 @@
 /**
- * E2E test setup — reads Alice's real config to build sandbox/paper brokers.
+ * E2E test setup — shared, lazily-initialized broker instances.
  *
  * Uses the same code path as main.ts: loadTradingConfig → createPlatformFromConfig
- * → createBrokerFromConfig. Only selects accounts on sandbox/paper platforms.
+ * → createBrokerFromConfig. Only selects accounts on sandbox/paper/demoTrading platforms.
  *
- * If no sandbox/paper accounts are configured, tests using these helpers should skip.
+ * Singleton: first call loads config + inits all brokers. Subsequent calls
+ * return the same instances. Requires fileParallelism: false in vitest config.
  */
 
 import { loadTradingConfig } from '@/core/config.js'
@@ -18,11 +19,20 @@ export interface TestAccount {
   broker: IBroker
 }
 
+// ==================== Lazy singleton ====================
+
+let cached: Promise<TestAccount[]> | null = null
+
 /**
- * Read platforms.json + accounts.json, build brokers for sandbox/paper accounts only.
- * Does NOT call broker.init() — caller decides when to connect.
+ * Get initialized test accounts. First call loads config + inits brokers.
+ * Subsequent calls return the same instances (module-level cache).
  */
-export async function loadTestAccounts(): Promise<TestAccount[]> {
+export function getTestAccounts(): Promise<TestAccount[]> {
+  if (!cached) cached = initAll()
+  return cached
+}
+
+async function initAll(): Promise<TestAccount[]> {
   const { platforms, accounts } = await loadTradingConfig()
   const platformMap = new Map(platforms.map(p => [p.id, p]))
   const result: TestAccount[] = []
@@ -31,17 +41,22 @@ export async function loadTestAccounts(): Promise<TestAccount[]> {
     const platCfg = platformMap.get(acct.platformId)
     if (!platCfg) continue
 
-    // Only sandbox/paper/demoTrading accounts — never touch real money
     const isSafe =
       (platCfg.type === 'ccxt' && (platCfg.sandbox || platCfg.demoTrading)) ||
       (platCfg.type === 'alpaca' && platCfg.paper)
     if (!isSafe) continue
-
-    // Must have API key to be useful
     if (!acct.apiKey) continue
 
     const platform = createPlatformFromConfig(platCfg)
     const broker = createBrokerFromConfig(platform, acct)
+
+    try {
+      await broker.init()
+    } catch (err) {
+      console.warn(`e2e setup: ${acct.id} init failed, skipping:`, err)
+      continue
+    }
+
     result.push({
       id: acct.id,
       label: acct.label ?? acct.id,
