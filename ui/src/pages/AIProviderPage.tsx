@@ -52,7 +52,7 @@ export function AIProviderPage() {
   const handleCreateSave = async (name: string, profile: Profile) => {
     await api.config.createProfile(name, profile)
     setProfiles((p) => p ? { ...p, [name]: profile } : p)
-    setShowCreate(false)
+    // Don't close modal here — let the modal handle test + close
   }
 
   const handleProfileUpdate = async (slug: string, profile: Profile) => {
@@ -257,27 +257,27 @@ function ProfileCreateModal({ presets, existingNames, onSave, onClose }: {
     const validationError = validate()
     if (validationError) { setError(validationError); return }
 
-    setSaving(true); setError('')
+    setSaving(true); setError(''); setTestResult(null)
     try {
       const data = getSubmitData()
       data.preset = selectedPreset.id
-      // Save first
+      // Save profile
       await onSave(trimmedName, data as unknown as Profile)
+      setSaving(false)
 
-      // Then test connectivity
+      // Test connectivity
       setTesting(true)
       const result = await api.config.testProfile(trimmedName)
       setTestResult(result)
       setTesting(false)
 
       if (result.ok) {
-        // Auto-close after brief success display
-        setTimeout(onClose, 1500)
+        setTimeout(onClose, 2000)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create')
-      setTesting(false)
-    } finally { setSaving(false) }
+      setSaving(false); setTesting(false)
+    }
   }
 
   const officialPresets = presets.filter(p => p.category === 'official')
