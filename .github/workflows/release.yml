@@ -69,7 +69,7 @@ jobs:
   publish-opentypebb:
     runs-on: ubuntu-latest
     needs: release
-    if: needs.release.result == 'success'
+    if: needs.release.result == 'success' && github.repository == 'TraderAlice/OpenAlice'
     permissions:
       contents: read
       packages: write
