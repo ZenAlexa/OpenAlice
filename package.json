@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:bbProvider": "vitest run --config vitest.bbProvider.config.ts",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "turbo run build --filter=@traderalice/opentypebb --filter=@traderalice/ibkr && tsc --noEmit"
   },
   "keywords": [
     "trading",
