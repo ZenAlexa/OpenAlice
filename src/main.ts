@@ -39,8 +39,10 @@ import { AgentSdkProvider } from './ai-providers/agent-sdk/agent-sdk-provider.js
 import { CodexProvider } from './ai-providers/codex/index.js'
 import { createEventLog } from './core/event-log.js'
 import { createToolCallLog } from './core/tool-call-log.js'
+import { createListenerRegistry } from './core/listener-registry.js'
 import { createCronEngine, createCronListener, createCronTools } from './task/cron/index.js'
 import { createHeartbeat } from './task/heartbeat/index.js'
+import { createTriggerListener } from './task/trigger/index.js'
 import { NewsCollectorStore, NewsCollector } from './domain/news/index.js'
 import { createNewsArchiveTools } from './tool/news.js'
 
@@ -246,25 +248,27 @@ async function main() {
     toolCallLog,
   })
 
+  // ==================== Listener Registry ====================
+
+  const listenerRegistry = createListenerRegistry(eventLog)
+
   // ==================== Connector Center ====================
 
-  const connectorCenter = new ConnectorCenter(eventLog)
+  const connectorCenter = new ConnectorCenter({ eventLog, listenerRegistry })
 
   // Session awareness tools (registered here because they need connectorCenter)
   toolCenter.register(createSessionTools(connectorCenter), 'session')
 
-  // ==================== Cron Lifecycle ====================
+  // ==================== Cron Listener ====================
 
-  await cronEngine.start()
   const cronSession = new SessionStore('cron/default')
   await cronSession.restore()
-  const cronListener = createCronListener({ connectorCenter, eventLog, agentCenter, session: cronSession })
-  cronListener.start()
-  console.log('cron: engine + listener started')
+  const cronListener = createCronListener({ connectorCenter, agentCenter, registry: listenerRegistry, session: cronSession })
+  await cronListener.start()
 
   // ==================== Snapshot Scheduler ====================
 
-  const snapshotScheduler = createSnapshotScheduler({ snapshotService, cronEngine, eventLog, config: config.snapshot })
+  const snapshotScheduler = createSnapshotScheduler({ snapshotService, cronEngine, registry: listenerRegistry, config: config.snapshot })
   await snapshotScheduler.start()
   if (config.snapshot.enabled) {
     console.log(`snapshot: scheduler started (every ${config.snapshot.every})`)
@@ -274,12 +278,28 @@ async function main() {
 
   const heartbeat = createHeartbeat({
     config: config.heartbeat,
-    connectorCenter, cronEngine, eventLog, agentCenter,
+    connectorCenter, cronEngine, agentCenter, registry: listenerRegistry,
   })
   await heartbeat.start()
   if (config.heartbeat.enabled) {
     console.log(`heartbeat: enabled (every ${config.heartbeat.every})`)
   }
+
+  // ==================== Trigger Listener (external event router) ====================
+
+  const triggerSession = new SessionStore('trigger/default')
+  await triggerSession.restore()
+  const triggerListener = createTriggerListener({
+    connectorCenter, agentCenter, registry: listenerRegistry, session: triggerSession,
+  })
+  await triggerListener.start()
+
+  // ==================== Activate Listeners + Start Cron Engine ====================
+
+  await listenerRegistry.start()
+  await cronEngine.start()
+  console.log(`listener-registry: started (${listenerRegistry.list().length} listeners)`)
+  console.log('cron: engine started')
 
   // ==================== News Collector ====================
 
@@ -409,6 +429,7 @@ async function main() {
 
   const ctx: EngineContext = {
     config, connectorCenter, agentCenter, eventLog, toolCallLog, heartbeat, cronEngine, toolCenter,
+    listenerRegistry,
     bbEngine: getSDKExecutor(),
     accountManager, fxService, snapshotService,
     newsProvider: newsStore,
@@ -430,8 +451,10 @@ async function main() {
     newsCollector?.stop()
     snapshotScheduler.stop()
     heartbeat.stop()
+    triggerListener.stop()
     cronListener.stop()
     cronEngine.stop()
+    await listenerRegistry.stop()
     for (const plugin of [...corePlugins, ...optionalPlugins.values()]) {
       await plugin.stop()
     }
