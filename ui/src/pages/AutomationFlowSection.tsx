@@ -47,15 +47,53 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
     )
   }
 
-  // Helper to vertically center a column with fewer rows against the event columns.
-  const eventRowCount = typeNames.length
-  function columnYOffset(rowCount: number): number {
-    return Math.max(0, ((eventRowCount - rowCount) * ROW_HEIGHT) / 2)
+  // ---------- Liveness ----------
+  // An event's left node is "live" iff some concrete (non-wildcard) producer
+  // injects it OR some concrete listener subscribes to it — in other words,
+  // the node has at least one visible edge. Wildcards are excluded because
+  // they render as an aura, not as concrete edges.
+  // Its right node is "live" iff some concrete listener emits it.
+  const producers = topology.producers ?? []
+  const liveLeft = new Set<string>()
+  const liveRight = new Set<string>()
+  for (const l of topology.listeners) {
+    if (!l.subscribesWildcard) for (const s of l.subscribes) liveLeft.add(s)
+    if (!l.emitsWildcard) for (const e of l.emits) liveRight.add(e)
+  }
+  for (const p of producers) {
+    if (!p.emitsWildcard) for (const e of p.emits) liveLeft.add(e)
   }
 
-  // Column 0 — producers (pure event sources). Vertically centered.
-  const producers = topology.producers ?? []
-  const producerYOffset = columnYOffset(producers.length)
+  // ---------- Event row layout ----------
+  // Two-phase:
+  //   1. Events live on BOTH sides go at the top and share a y index across
+  //      columns (preserves the "same event at same row" alignment that was
+  //      the original layout's whole point).
+  //   2. Single-sided events pack their own column below the shared block.
+  const bothSided = typeNames.filter((t) => liveLeft.has(t) && liveRight.has(t))
+  const leftOnly = typeNames.filter((t) => liveLeft.has(t) && !liveRight.has(t))
+  const rightOnly = typeNames.filter((t) => !liveLeft.has(t) && liveRight.has(t))
+
+  const leftIdx = new Map<string, number>()
+  const rightIdx = new Map<string, number>()
+  bothSided.forEach((t, i) => { leftIdx.set(t, i); rightIdx.set(t, i) })
+  leftOnly.forEach((t, i) => leftIdx.set(t, bothSided.length + i))
+  rightOnly.forEach((t, i) => rightIdx.set(t, bothSided.length + i))
+
+  const leftHeight = bothSided.length + leftOnly.length
+  const rightHeight = bothSided.length + rightOnly.length
+  const maxHeight = Math.max(
+    leftHeight,
+    rightHeight,
+    producers.length,
+    topology.listeners.length,
+  )
+  function centerOffset(count: number): number {
+    return Math.max(0, ((maxHeight - count) * ROW_HEIGHT) / 2)
+  }
+
+  // Column 0 — producers
+  const producerYOffset = centerOffset(producers.length)
   producers.forEach((p, i) => {
     const classes = ['flow-producer-node']
     if (p.emitsWildcard) classes.push('flow-producer-emit-wildcard')
@@ -70,34 +108,40 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
     })
   })
 
-  // Column 1 — event types as subscribe sources (left-side events)
-  typeNames.forEach((type, i) => {
+  // Column 1 — left-side event nodes (skipping dead ones)
+  const leftEventYOffset = centerOffset(leftHeight)
+  for (const type of typeNames) {
+    if (!liveLeft.has(type)) continue
+    const idx = leftIdx.get(type)!
     nodes.push({
       id: `event-in:${type}`,
       type: 'default',
       data: { label: eventLabel(type) },
-      position: { x: COL_X.inputs, y: 20 + i * ROW_HEIGHT },
+      position: { x: COL_X.inputs, y: 20 + leftEventYOffset + idx * ROW_HEIGHT },
       className: eventNodeClassName(type),
       sourcePosition: 'right' as any,
       targetPosition: 'left' as any,
     })
-  })
+  }
 
-  // Column 3 — same event types as emit targets (right-side events), aligned vertically
-  typeNames.forEach((type, i) => {
+  // Column 3 — right-side event nodes (skipping dead ones)
+  const rightEventYOffset = centerOffset(rightHeight)
+  for (const type of typeNames) {
+    if (!liveRight.has(type)) continue
+    const idx = rightIdx.get(type)!
     nodes.push({
       id: `event-out:${type}`,
       type: 'default',
       data: { label: eventLabel(type) },
-      position: { x: COL_X.outputs, y: 20 + i * ROW_HEIGHT },
+      position: { x: COL_X.outputs, y: 20 + rightEventYOffset + idx * ROW_HEIGHT },
       className: eventNodeClassName(type),
       sourcePosition: 'right' as any,
       targetPosition: 'left' as any,
     })
-  })
+  }
 
-  // Column 2 — listeners, vertically centered against the event columns.
-  const listenerYOffset = columnYOffset(topology.listeners.length)
+  // Column 2 — listeners, vertically centered against the tallest column.
+  const listenerYOffset = centerOffset(topology.listeners.length)
   topology.listeners.forEach((l, i) => {
     const classes = ['flow-listener-node']
     if (l.subscribesWildcard) classes.push('flow-listener-sub-wildcard')
@@ -234,12 +278,14 @@ export function AutomationFlowSection() {
     <div className="flex flex-col gap-3 h-full">
       <div className="rounded-lg border border-border/50 bg-bg-secondary/50 px-4 py-3">
         <p className="text-[13px] text-text-muted leading-relaxed">
-          Alice's async lifecycle as a graph. Four columns from left to right: producers (pure event sources like
-          cron-engine and connector gateways), event types as subscribe sources, registered listeners, and the
-          same event types as emit targets. Same event sits at the same row on both event columns. Purple solid
-          arrows are injections from producers, blue solid arrows are subscriptions, dashed green arrows are
-          emissions. A glowing halo on a listener means it accepts (left) or produces (right) any registered
-          event type. Both event columns pulse in real time when an event of that type fires.
+          Alice's async lifecycle as a graph. Four columns left-to-right: producers (pure event sources),
+          event types as subscribe sources, registered listeners, and event types as emit targets. Only
+          sides of an event that actually participate in the graph are rendered — a terminal output like
+          <code className="font-mono mx-1">cron.done</code> shows up only on the right; a pure input like
+          <code className="font-mono mx-1">cron.fire</code> only on the left. Events that are both consumed
+          and produced sit at the top of both columns, aligned on the same row. Purple solid arrows are
+          injections, blue solid arrows are subscriptions, dashed green arrows are emissions. A listener
+          halo means wildcard subscribe (left) or wildcard emit (right). Event nodes pulse in real time.
         </p>
       </div>
 
