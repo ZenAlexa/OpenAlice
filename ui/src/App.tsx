@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { AIProviderPage } from './pages/AIProviderPage'
 import { MarketDataPage } from './pages/MarketDataPage'
 import { MarketPage } from './pages/MarketPage'
+import { MarketDetailPage } from './pages/MarketDetailPage'
 import { NewsPage } from './pages/NewsPage'
 import { NewsCollectorPage } from './pages/NewsCollectorPage'
 import { TradingPage } from './pages/TradingPage'
@@ -73,6 +74,7 @@ export function App() {
             <Route path="/automation" element={<AutomationPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/market" element={<MarketPage />} />
+            <Route path="/market/:assetClass/:symbol" element={<MarketDetailPage />} />
             <Route path="/market-data" element={<MarketDataPage />} />
             <Route path="/news-collector" element={<NewsCollectorPage />} />
             <Route path="/news" element={<NewsPage />} />
