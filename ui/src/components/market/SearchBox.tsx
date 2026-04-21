@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { marketApi, type SearchResult, type AssetClass } from '../../api/market'
-
-interface Props {
-  onSelect: (result: SearchResult) => void
-}
 
 const ASSET_CLASS_COLORS: Record<AssetClass, string> = {
   equity: 'bg-accent/15 text-accent',
@@ -20,7 +17,8 @@ function resultSymbol(r: SearchResult): string {
   return r.symbol ?? r.id ?? ''
 }
 
-export function SearchBox({ onSelect }: Props) {
+export function SearchBox() {
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -62,9 +60,11 @@ export function SearchBox({ onSelect }: Props) {
   }, [])
 
   const handleSelect = (r: SearchResult) => {
-    onSelect(r)
+    const sym = resultSymbol(r)
+    if (!sym) return
     setOpen(false)
-    setQuery(resultSymbol(r))
+    setQuery('')
+    navigate(`/market/${r.assetClass}/${encodeURIComponent(sym)}`)
   }
 
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
