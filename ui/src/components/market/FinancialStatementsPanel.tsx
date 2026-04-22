@@ -66,7 +66,7 @@ interface Props {
   symbol: string
 }
 
-type CacheEntry = { rows: FinancialStatementRow[]; error?: string }
+type CacheEntry = { rows: FinancialStatementRow[]; provider?: string; error?: string }
 
 export function FinancialStatementsPanel({ symbol }: Props) {
   const [tab, setTab] = useState<Tab>('income')
@@ -87,7 +87,7 @@ export function FinancialStatementsPanel({ symbol }: Props) {
       if (cancelled) return
       setCache((prev) => ({
         ...prev,
-        [tab]: { rows: res.results ?? [], error: res.error },
+        [tab]: { rows: res.results ?? [], provider: res.provider, error: res.error },
       }))
     })
       .catch((e) => {
@@ -105,6 +105,7 @@ export function FinancialStatementsPanel({ symbol }: Props) {
   return (
     <Card
       title="Financial Statements"
+      source={entry?.provider ?? null}
       contentClassName="overflow-x-auto p-0"
       right={
         <div className="flex border border-border rounded overflow-hidden">

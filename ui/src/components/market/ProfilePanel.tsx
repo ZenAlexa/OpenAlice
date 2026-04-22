@@ -9,6 +9,7 @@ interface Props {
 
 export function ProfilePanel({ symbol }: Props) {
   const [profile, setProfile] = useState<EquityProfile | null>(null)
+  const [provider, setProvider] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -20,6 +21,7 @@ export function ProfilePanel({ symbol }: Props) {
       if (cancelled) return
       if (res.error) setError(res.error)
       setProfile(res.results?.[0] ?? null)
+      setProvider(res.provider || null)
     })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -38,7 +40,7 @@ export function ProfilePanel({ symbol }: Props) {
   const hq = [hqCity, hqState, hqCountry].filter(Boolean).join(', ') || undefined
 
   return (
-    <Card title="Profile">
+    <Card title="Profile" source={provider}>
       {loading && <div className="text-[12px] text-text-muted">Loading…</div>}
       {error && !loading && <div className="text-[12px] text-red-400">{error}</div>}
       {!loading && !error && profile && (

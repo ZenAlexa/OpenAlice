@@ -11,6 +11,7 @@ type Loaded = { metrics: KeyMetrics | null; ratios: FinancialRatios | null }
 
 export function KeyMetricsPanel({ symbol }: Props) {
   const [data, setData] = useState<Loaded | null>(null)
+  const [provider, setProvider] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,12 +19,21 @@ export function KeyMetricsPanel({ symbol }: Props) {
     let cancelled = false
     setLoading(true)
     setError(null)
+    // Metrics and ratios both feed this panel, but ratios isn't implemented
+    // on every provider (yfinance returns "Fetcher not found"). Treat either
+    // result independently: if even one returns rows, we have something to
+    // show. Only surface an error when both are empty.
     Promise.all([marketApi.equity.metrics(symbol), marketApi.equity.ratios(symbol)])
       .then(([m, r]) => {
         if (cancelled) return
-        const err = m.error ?? r.error
-        if (err) setError(err)
-        setData({ metrics: m.results?.[0] ?? null, ratios: r.results?.[0] ?? null })
+        const metrics = m.results?.[0] ?? null
+        const ratios = r.results?.[0] ?? null
+        if (!metrics && !ratios) {
+          setError(m.error ?? r.error ?? 'No data')
+          return
+        }
+        setData({ metrics, ratios })
+        setProvider(m.provider || r.provider || null)
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -59,7 +69,7 @@ export function KeyMetricsPanel({ symbol }: Props) {
   ]
 
   return (
-    <Card title="Key Metrics">
+    <Card title="Key Metrics" source={provider}>
       {loading && <div className="text-[12px] text-text-muted">Loading…</div>}
       {error && !loading && <div className="text-[12px] text-red-400">{error}</div>}
       {!loading && !error && data && (
