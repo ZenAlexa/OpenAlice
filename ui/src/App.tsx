@@ -47,7 +47,6 @@ export const ROUTES: Record<Page, string> = {
 }
 
 export function App() {
-  const [sseConnected, setSseConnected] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
 
@@ -84,7 +83,6 @@ export function App() {
   return (
     <div className="flex h-full">
       <Sidebar
-        sseConnected={sseConnected}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -150,7 +148,6 @@ export function App() {
               path="/"
               element={
                 <ChatPage
-                  onSSEStatus={setSseConnected}
                   channels={channels}
                   activeChannel={activeChannel}
                   onChannelChange={setActiveChannel}

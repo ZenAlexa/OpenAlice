@@ -93,7 +93,6 @@ export function finalizeMessages(
 
 interface UseChatOptions {
   channel: string
-  onSSEStatus?: (connected: boolean) => void
 }
 
 export interface UseChatReturn {
@@ -111,7 +110,7 @@ export interface UseChatReturn {
 const INITIAL_PAGE_SIZE = 50
 const PAGE_SIZE = 50
 
-export function useChat({ channel, onSSEStatus }: UseChatOptions): UseChatReturn {
+export function useChat({ channel }: UseChatOptions): UseChatReturn {
   const [messages, setMessages] = useState<DisplayItem[]>([])
   const [streamSegments, setStreamSegments] = useState<StreamSegment[]>([])
   const [isWaiting, setIsWaiting] = useState(false)
@@ -186,7 +185,6 @@ export function useChat({ channel, onSSEStatus }: UseChatOptions): UseChatReturn
         ])
       }
     },
-    onStatus: channel === 'default' ? onSSEStatus : undefined,
   })
 
   // Abort streaming on unmount

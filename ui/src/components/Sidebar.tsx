@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom'
 import { type Page, ROUTES } from '../App'
 
 interface SidebarProps {
-  sseConnected: boolean
   open: boolean
   onClose: () => void
 }
@@ -158,7 +157,7 @@ const INDICATOR_STYLE = { background: '#58a6ff' }
 
 // ==================== Sidebar ====================
 
-export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
+export function Sidebar({ open, onClose }: SidebarProps) {
   const location = useLocation()
   const currentPage = pathToPage(location.pathname)
 
@@ -175,7 +174,9 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
       {/* Sidebar — mobile: 220px slide-in with labels; desktop: 56px icon-only activity bar */}
       <aside
         className={`
-          w-[220px] md:w-14 h-full flex flex-col bg-bg-secondary border-r border-border shrink-0
+          w-[220px] md:w-14 h-full flex flex-col shrink-0
+          bg-bg-secondary md:bg-bg
+          border-r border-border md:border-r-0
           fixed z-50 top-0 left-0 transition-transform duration-200
           ${open ? 'translate-x-0' : '-translate-x-full'}
           md:static md:translate-x-0 md:z-auto md:transition-none
@@ -195,7 +196,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
         {/* Navigation */}
         <nav className="flex-1 flex flex-col px-2 md:px-1.5 overflow-y-auto">
           {NAV_SECTIONS.map((section, si) => (
-            <div key={si} className={si > 0 ? 'mt-4 md:mt-3' : ''}>
+            <div key={si} className={si > 0 ? 'mt-4 md:mt-2' : ''}>
               {section.sectionLabel && (
                 <p className="px-3 mb-1 text-[11px] font-medium text-text-muted/50 uppercase tracking-wider md:hidden">
                   {section.sectionLabel}
@@ -214,19 +215,19 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                       to={ROUTES[item.page]}
                       onClick={onClose}
                       title={item.label}
-                      className={`relative flex items-center gap-3 px-3 py-2 md:px-0 md:py-2.5 md:justify-center rounded-lg text-sm transition-colors text-left ${
+                      className={`relative flex items-center gap-3 px-3 py-2 md:px-0 md:py-2.5 md:rounded-none md:justify-center rounded-lg text-sm transition-colors text-left ${
                         isActive
-                          ? 'bg-bg-tertiary/60 text-text'
-                          : 'text-text-muted hover:text-text hover:bg-bg-tertiary/40'
+                          ? 'bg-bg-tertiary text-text md:bg-transparent'
+                          : 'text-text-muted hover:text-text hover:bg-bg-tertiary/50 md:hover:bg-bg-secondary'
                       }`}
                     >
                       <span
-                        className={`absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full transition-all duration-200 ${
-                          isActive ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'
+                        className={`absolute left-0 top-2 bottom-2 w-[2px] rounded-r-full transition-opacity duration-150 hidden md:block ${
+                          isActive ? 'opacity-100' : 'opacity-0'
                         }`}
                         style={INDICATOR_STYLE}
                       />
-                      <span className="flex items-center justify-center w-5 h-5">{item.icon(isActive)}</span>
+                      <span className={`flex items-center justify-center w-5 h-5 ${isActive ? 'md:text-text' : ''}`}>{item.icon(isActive)}</span>
                       <span className="md:hidden">{item.label}</span>
                     </Link>
                   )
@@ -236,22 +237,6 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* SSE Connection Status */}
-        <div className="mt-auto px-4 py-3 md:px-0 md:py-2.5 md:flex md:justify-center border-t border-border" title={sseConnected ? 'Connected' : 'Reconnecting...'}>
-          <div className="flex items-center gap-2 text-[12px] text-text-muted">
-            <span className="relative flex h-2 w-2">
-              {sseConnected ? (
-                <span className="w-2 h-2 rounded-full bg-green" />
-              ) : (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red/60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red" />
-                </>
-              )}
-            </span>
-            <span className="md:hidden">{sseConnected ? 'Connected' : 'Reconnecting...'}</span>
-          </div>
-        </div>
       </aside>
     </>
   )

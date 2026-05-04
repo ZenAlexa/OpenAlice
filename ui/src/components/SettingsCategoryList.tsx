@@ -26,7 +26,7 @@ export function SettingsCategoryList() {
   const location = useLocation()
 
   return (
-    <div className="py-1">
+    <div className="py-0.5">
       {CATEGORIES.map((item) => {
         const active = item.matches.some(
           (m) => location.pathname === m || location.pathname.startsWith(m + '/'),
@@ -35,16 +35,12 @@ export function SettingsCategoryList() {
           <Link
             key={item.to}
             to={item.to}
-            className={`group relative flex items-center gap-1 px-3 py-1.5 text-sm transition-colors ${
-              active ? 'bg-bg-tertiary/60 text-text' : 'text-text-muted hover:text-text hover:bg-bg-tertiary/30'
+            className={`flex items-center gap-1 px-3 py-1 text-[13px] transition-colors ${
+              active
+                ? 'bg-bg-tertiary text-text'
+                : 'text-text-muted hover:text-text hover:bg-bg-tertiary/50'
             }`}
           >
-            {active && (
-              <span
-                className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full"
-                style={{ background: '#58a6ff' }}
-              />
-            )}
             <span className="truncate">{item.label}</span>
           </Link>
         )

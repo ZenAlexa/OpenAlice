@@ -26,7 +26,7 @@ export function ChatChannelList({
   const subChannels = channels.filter((ch) => ch.id !== 'default')
 
   return (
-    <div className="py-1">
+    <div className="py-0.5">
       {showNewForm && <NewChannelForm onCreate={onCreate} onCancel={onCloseNewForm} />}
 
       {defaultChannel && (
@@ -37,7 +37,7 @@ export function ChatChannelList({
         />
       )}
 
-      {subChannels.length > 0 && <div className="my-1 mx-3 border-t border-border/50" />}
+      {subChannels.length > 0 && <div className="my-1 mx-3 border-t border-border/40" />}
 
       {subChannels.map((ch) => (
         <ChannelRow
@@ -51,8 +51,8 @@ export function ChatChannelList({
       ))}
 
       {subChannels.length === 0 && !showNewForm && (
-        <p className="px-3 py-2 text-[11px] text-text-muted/60 italic">
-          No sub-channels yet. Click + to create one.
+        <p className="px-3 py-2 text-[12px] text-text-muted/60">
+          No sub-channels yet — click + to create one.
         </p>
       )}
     </div>
@@ -72,13 +72,12 @@ function ChannelRow({ channel, active, onSelect, onEdit, onDelete }: ChannelRowP
   return (
     <div
       onClick={onSelect}
-      className={`group relative flex items-center gap-1 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
-        active ? 'bg-bg-tertiary/60 text-text' : 'text-text-muted hover:text-text hover:bg-bg-tertiary/30'
+      className={`group flex items-center gap-1 px-3 py-1 cursor-pointer text-[13px] transition-colors ${
+        active
+          ? 'bg-bg-tertiary text-text'
+          : 'text-text-muted hover:text-text hover:bg-bg-tertiary/50'
       }`}
     >
-      {active && (
-        <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full" style={{ background: '#58a6ff' }} />
-      )}
       <span className="flex-1 truncate">
         {isDefault ? channel.label : (
           <>

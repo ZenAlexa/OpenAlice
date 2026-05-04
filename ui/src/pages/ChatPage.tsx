@@ -6,19 +6,17 @@ import { ChatInput } from '../components/ChatInput'
 import { PushApprovalPanel } from '../components/PushApprovalPanel'
 
 interface ChatPageProps {
-  onSSEStatus?: (connected: boolean) => void
   channels: ChannelListItem[]
   activeChannel: string
   onChannelChange: (id: string) => void
 }
 
-export function ChatPage({ onSSEStatus, channels, activeChannel, onChannelChange }: ChatPageProps) {
+export function ChatPage({ channels, activeChannel, onChannelChange }: ChatPageProps) {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
 
   const { messages, streamSegments, isWaiting, send, abort, loadMore, hasMore, isLoadingMore } = useChat({
     channel: activeChannel,
-    onSSEStatus: activeChannel === 'default' ? onSSEStatus : undefined,
   })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)

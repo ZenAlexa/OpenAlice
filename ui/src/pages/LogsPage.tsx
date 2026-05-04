@@ -304,24 +304,15 @@ function ToolCallLogSection() {
     }
   }, [entries])
 
-  // SSE real-time updates
-  useSSE({
-    url: '/api/agent-status/stream',
-    onMessage: (record: ToolCallRecord) => {
-      setToolNames((prev) => {
-        if (prev.includes(record.name)) return prev
-        return [...prev, record.name].sort()
-      })
-      setTotal((prev) => prev + 1)
-      if (page === 1) {
-        const matchesFilter = !nameFilter || record.name === nameFilter
-        if (matchesFilter) {
-          setEntries((prev) => [record, ...prev].slice(0, TOOL_PAGE_SIZE))
-        }
-      }
-    },
-    enabled: !paused,
-  })
+  // Live updates via polling — refetch page 1 every 3s while not paused.
+  // Older pages don't poll (user is browsing history; not jumping back).
+  useEffect(() => {
+    if (paused || page !== 1) return
+    const interval = setInterval(() => {
+      fetchPage(1, nameFilter || undefined)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [paused, page, nameFilter, fetchPage])
 
   const handleNameChange = useCallback((name: string) => {
     setNameFilter(name)
