@@ -21,7 +21,7 @@ import { MarketDetailPage } from './pages/MarketDetailPage'
 import { NewsPage } from './pages/NewsPage'
 import { NewsCollectorPage } from './pages/NewsCollectorPage'
 import { TradingPage } from './pages/TradingPage'
-import { TradePage } from './pages/TradePage'
+import { TradingAsGitPage } from './pages/TradingAsGitPage'
 import { UTADetailPage } from './pages/UTADetailPage'
 import { ConnectorsPage } from './pages/ConnectorsPage'
 import { DevPage } from './pages/DevPage'
@@ -61,11 +61,11 @@ export const SECTIONS: AppSection[] = [
     ],
   },
   {
-    paths: ['/trade'],
-    title: 'Trading',
+    paths: ['/trading-as-git'],
+    title: 'Trading as Git',
     Secondary: PushApprovalPanel,
     routes: [
-      { path: '/trade', element: <TradePage /> },
+      { path: '/trading-as-git', element: <TradingAsGitPage /> },
     ],
   },
   {

@@ -46,8 +46,8 @@ const NAV_SECTIONS: NavSection[] = [
         ),
       },
       {
-        page: 'trade',
-        label: 'Trading',
+        page: 'trading-as-git',
+        label: 'Trading as Git',
         icon: (active) => (
           <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="6" cy="6" r="2.5" />
