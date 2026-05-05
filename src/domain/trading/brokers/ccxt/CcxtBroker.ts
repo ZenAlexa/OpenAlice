@@ -839,7 +839,7 @@ export class CcxtBroker implements IBroker<CcxtBrokerMeta> {
 
   getCapabilities(): AccountCapabilities {
     return {
-      supportedSecTypes: ['CRYPTO'],
+      supportedSecTypes: ['CRYPTO', 'CRYPTO_PERP'],
       supportedOrderTypes: ['MKT', 'LMT'],
     }
   }

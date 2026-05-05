@@ -1232,10 +1232,10 @@ describe('CcxtBroker — getMarketClock', () => {
 // ==================== getCapabilities ====================
 
 describe('CcxtBroker — getCapabilities', () => {
-  it('returns CRYPTO secType and MKT/LMT order types', () => {
+  it('returns CRYPTO + CRYPTO_PERP secTypes and MKT/LMT order types', () => {
     const acc = makeAccount()
     const caps = acc.getCapabilities()
-    expect(caps.supportedSecTypes).toEqual(['CRYPTO'])
+    expect(caps.supportedSecTypes).toEqual(['CRYPTO', 'CRYPTO_PERP'])
     expect(caps.supportedOrderTypes).toEqual(['MKT', 'LMT'])
   })
 })
