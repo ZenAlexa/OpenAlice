@@ -13,17 +13,24 @@ export function ChatPage() {
     channel: activeChannel,
   })
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const userScrolledUp = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const activeChannelConfig = channels.find((ch) => ch.id === activeChannel)
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom. Uses container.scrollTop (not Element.scrollIntoView)
+  // because scrollIntoView walks up the DOM and scrolls every ancestor scroller
+  // including the window — which during initial mount, when our container's
+  // height isn't resolved yet (panel measurement still pending), means the
+  // window itself gets scrolled. That manifested as the chat-page-only flash:
+  // body/html briefly scrolls down, ActivityBar and sidebar appear shifted up,
+  // then layout settles and snaps back. Always restrict scrolling to our
+  // container.
   const scrollToBottom = useCallback(() => {
-    if (!userScrolledUp.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
-    }
+    if (userScrolledUp.current) return
+    const el = containerRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
   }, [])
 
   useEffect(scrollToBottom, [messages, isWaiting, streamSegments, scrollToBottom])
@@ -126,7 +133,9 @@ export function ChatPage() {
     userScrolledUp.current = false
     setShowScrollBtn(false)
     setNewMsgCount(0)
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = containerRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [])
 
   return (
@@ -236,7 +245,6 @@ export function ChatPage() {
                 </div>
               )}
             </div>
-            <div ref={messagesEndRef} />
           </div>
         </div>
 
