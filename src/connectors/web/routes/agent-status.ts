@@ -1,8 +1,7 @@
 import { Hono } from 'hono'
-import { streamSSE } from 'hono/streaming'
 import type { EngineContext } from '../../../core/types.js'
 
-/** Tool call log routes: GET /, GET /recent, GET /stream (SSE) */
+/** Tool call log routes: GET /, GET /recent */
 export function createAgentStatusRoutes(ctx: EngineContext) {
   const app = new Hono()
 
@@ -22,26 +21,6 @@ export function createAgentStatusRoutes(ctx: EngineContext) {
     const name = c.req.query('name') || undefined
     const entries = ctx.toolCallLog.recent({ afterSeq, limit, name })
     return c.json({ entries, lastSeq: ctx.toolCallLog.lastSeq() })
-  })
-
-  // Real-time SSE stream
-  app.get('/stream', (c) => {
-    return streamSSE(c, async (stream) => {
-      const unsub = ctx.toolCallLog.subscribe((record) => {
-        stream.writeSSE({ data: JSON.stringify(record) }).catch(() => {})
-      })
-
-      const pingInterval = setInterval(() => {
-        stream.writeSSE({ event: 'ping', data: '' }).catch(() => {})
-      }, 30_000)
-
-      stream.onAbort(() => {
-        clearInterval(pingInterval)
-        unsub()
-      })
-
-      await new Promise<void>(() => {})
-    })
   })
 
   return app
