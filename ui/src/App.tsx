@@ -19,7 +19,7 @@ export type Page =
 
 /** Page type → URL path mapping. Used by the activity bar to know where each icon links. */
 export const ROUTES: Record<Page, string> = {
-  'chat': '/',
+  'chat': '/chat',
   'diary': '/diary',
   'portfolio': '/portfolio',
   'automation': '/automation',
@@ -89,7 +89,7 @@ function AppShell() {
           {REDIRECT_ROUTES.map((r) => (
             <Route key={r.path} path={r.path} element={r.element} />
           ))}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </div>
     </main>

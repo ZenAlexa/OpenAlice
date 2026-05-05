@@ -52,12 +52,12 @@ export interface AppSection {
 
 export const SECTIONS: AppSection[] = [
   {
-    paths: ['/'],
+    paths: ['/chat'],
     title: 'Chat',
     Secondary: ChatChannelListContainer,
     Actions: NewChannelButton,
     routes: [
-      { path: '/', element: <ChatPage /> },
+      { path: '/chat', element: <ChatPage /> },
     ],
   },
   {
@@ -114,6 +114,8 @@ function RedirectUta() {
 
 /** Old URLs preserved as redirects to their current locations. */
 export const REDIRECT_ROUTES: RouteSpec[] = [
+  // Root → /chat (chat moved off the root for explicit naming)
+  { path: '/', element: <Navigate to="/chat" replace /> },
   // Logs / events / agent-status — moved into Dev
   { path: '/logs', element: <Navigate to="/dev/logs" replace /> },
   { path: '/events', element: <Navigate to="/dev/logs" replace /> },
