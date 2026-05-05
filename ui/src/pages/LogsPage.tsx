@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { api, type EventLogEntry, type ToolCallRecord } from '../api'
 import { useSSE } from '../hooks/useSSE'
-import { PageHeader } from '../components/PageHeader'
 
 // ==================== Helpers ====================
 
@@ -305,24 +304,15 @@ function ToolCallLogSection() {
     }
   }, [entries])
 
-  // SSE real-time updates
-  useSSE({
-    url: '/api/agent-status/stream',
-    onMessage: (record: ToolCallRecord) => {
-      setToolNames((prev) => {
-        if (prev.includes(record.name)) return prev
-        return [...prev, record.name].sort()
-      })
-      setTotal((prev) => prev + 1)
-      if (page === 1) {
-        const matchesFilter = !nameFilter || record.name === nameFilter
-        if (matchesFilter) {
-          setEntries((prev) => [record, ...prev].slice(0, TOOL_PAGE_SIZE))
-        }
-      }
-    },
-    enabled: !paused,
-  })
+  // Live updates via polling — refetch page 1 every 3s while not paused.
+  // Older pages don't poll (user is browsing history; not jumping back).
+  useEffect(() => {
+    if (paused || page !== 1) return
+    const interval = setInterval(() => {
+      fetchPage(1, nameFilter || undefined)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [paused, page, nameFilter, fetchPage])
 
   const handleNameChange = useCallback((name: string) => {
     setNameFilter(name)
@@ -496,8 +486,6 @@ export function LogsPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <PageHeader title="Logs" />
-
       <div className="px-4 md:px-6 border-b border-border/60">
         <div className="flex gap-1">
           {TABS.map((t) => (
