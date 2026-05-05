@@ -1,10 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useCallback, useState } from 'react'
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { useChat } from '../hooks/useChat'
 import { useChannels } from '../contexts/ChannelsContext'
 import { ChatMessage, ToolCallGroup, ThinkingIndicator, StreamingToolGroup } from '../components/ChatMessage'
 import { ChatInput } from '../components/ChatInput'
-import { PushApprovalPanel } from '../components/PushApprovalPanel'
 
 export function ChatPage() {
   const { channels, activeChannel } = useChannels()
@@ -132,9 +130,7 @@ export function ChatPage() {
   }, [])
 
   return (
-    <PanelGroup direction="horizontal" autoSaveId="chat-layout" className="flex-1 min-h-0">
-      <Panel defaultSize={70} minSize={40} className="flex flex-col min-h-0">
-      <div className="flex flex-col flex-1 min-h-0 max-w-[800px] mx-auto w-full">
+    <div className="flex flex-col flex-1 min-h-0 max-w-[800px] mx-auto w-full">
         {/* Messages area */}
         <div className="flex-1 min-h-0 relative">
           <div ref={containerRef} className="h-full overflow-y-auto px-5 py-6">
@@ -264,14 +260,8 @@ export function ChatPage() {
           </div>
         )}
 
-        {/* Input */}
-        <ChatInput disabled={isWaiting} onSend={send} />
-      </div>
-      </Panel>
-      <PanelResizeHandle disabled className="w-px bg-border" />
-      <Panel defaultSize={30} minSize={20} className="flex flex-col min-h-0">
-        <PushApprovalPanel />
-      </Panel>
-    </PanelGroup>
+      {/* Input */}
+      <ChatInput disabled={isWaiting} onSend={send} />
+    </div>
   )
 }

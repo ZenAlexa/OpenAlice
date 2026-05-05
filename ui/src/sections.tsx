@@ -25,7 +25,7 @@ import { UTADetailPage } from './pages/UTADetailPage'
 import { ConnectorsPage } from './pages/ConnectorsPage'
 import { DevPage } from './pages/DevPage'
 
-import { ChatChannelListContainer } from './components/ChatChannelListContainer'
+import { ChatSidebarContent } from './components/ChatSidebarContent'
 import { NewChannelButton } from './components/NewChannelButton'
 import { SettingsCategoryList } from './components/SettingsCategoryList'
 import { DevCategoryList } from './components/DevCategoryList'
@@ -51,8 +51,8 @@ export interface AppSection {
 export const SECTIONS: AppSection[] = [
   {
     paths: ['/'],
-    title: 'Chats',
-    Secondary: ChatChannelListContainer,
+    title: 'Chat',
+    Secondary: ChatSidebarContent,
     Actions: NewChannelButton,
     routes: [
       { path: '/', element: <ChatPage /> },
