@@ -5,36 +5,40 @@ import {
   type Tab,
   type ViewSpec,
   type TabGroup,
+  type ActivitySection,
   specEquals,
   getFocusedGroup,
 } from './types'
 
 /**
- * Zustand store backing the workspace. Phase 1 contract:
+ * Zustand store backing the workspace.
  *
- * - Single tab group (tree is always { kind: 'leaf', group }).
+ * Tabs:
  * - openOrFocus(spec): if a tab with this spec exists in the focused group,
  *   focus it. Otherwise append a new tab and focus it.
  * - closeTab(id): drop the tab. If it was focused, focus the right neighbour
- *   (or left, if it was the rightmost). If the group becomes empty, open a
- *   default chat tab — there is no empty-state UI in phase 1.
+ *   (or left, if it was the rightmost). If the group becomes empty, leave
+ *   it empty — TabHost shows the EmptyEditor view.
  * - focusTab(id): just set the focused tab. No-op if id isn't in the group.
+ * - closeMatching(predicate): close every tab whose spec matches.
  *
- * Persistence uses zustand's `persist` middleware against localStorage with
- * key `openalice.workspace.v1`. On schema changes (phase 3+) bump the key
- * — there is no migrate function: version mismatch falls back to initial
- * state, which is the loud-fail behaviour we want over silent migration.
+ * Sidebar:
+ * - setSidebar(section): show that section's sidebar. `null` collapses.
+ * - toggleSidebar(section): same section → collapse to null; different or
+ *   currently-null → switch to section. Drives ActivityBar click semantics.
+ *
+ * Persistence: zustand persist against localStorage["openalice.workspace.v2"].
+ * Schema bumps clear stored state (no migrate function) — loud-fail beats
+ * silent migration when shape changes.
  */
 
 interface WorkspaceActions {
   openOrFocus: (spec: ViewSpec) => void
   closeTab: (id: string) => void
   focusTab: (id: string) => void
-  /**
-   * Close every tab whose spec matches the predicate. Used e.g. when a
-   * channel is deleted — we close any chat tab pointing at that channel.
-   */
   closeMatching: (predicate: (spec: ViewSpec) => boolean) => void
+  setSidebar: (section: ActivitySection | null) => void
+  toggleSidebar: (section: ActivitySection) => void
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions
@@ -42,29 +46,26 @@ export type WorkspaceStore = WorkspaceState & WorkspaceActions
 const DEFAULT_GROUP_ID = 'g1'
 
 function newId(): string {
-  // crypto.randomUUID is available in all browsers we target (and in jsdom 22+).
   return crypto.randomUUID()
 }
 
-function defaultChatSpec(): ViewSpec {
-  return { kind: 'chat', params: { channelId: 'default' } }
-}
-
 function buildInitialState(): WorkspaceState {
-  const tab: Tab = { id: newId(), spec: defaultChatSpec() }
+  // Phase 2 starts empty — no auto-default chat. The empty-editor view in
+  // TabHost guides new users to the activity bar.
   const group: TabGroup = {
     id: DEFAULT_GROUP_ID,
-    tabIds: [tab.id],
-    activeTabId: tab.id,
+    tabIds: [],
+    activeTabId: null,
   }
   return {
-    tabs: { [tab.id]: tab },
+    tabs: {},
     tree: { kind: 'leaf', group },
     focusedGroupId: DEFAULT_GROUP_ID,
+    selectedSidebar: null,
   }
 }
 
-/** Phase 1 only — assumes leaf tree. Returns a new state with the focused group replaced. */
+/** Phase 2 still single-leaf. Returns a new state with the focused group replaced. */
 function withFocusedGroup(
   state: WorkspaceState,
   fn: (group: TabGroup) => TabGroup,
@@ -124,16 +125,8 @@ export const useWorkspace = create<WorkspaceStore>()(
           let activeTabId = group.activeTabId
           if (activeTabId === id) {
             // Prefer right neighbour (same index, since we filtered out the closed one),
-            // fall back to left.
+            // fall back to left, fall back to null when group is empty.
             activeTabId = tabIds[idx] ?? tabIds[idx - 1] ?? null
-          }
-
-          // Empty group → open default chat. No empty-state UI in phase 1.
-          if (tabIds.length === 0) {
-            const fallback: Tab = { id: newId(), spec: defaultChatSpec() }
-            tabs[fallback.id] = fallback
-            tabIds.push(fallback.id)
-            activeTabId = fallback.id
           }
 
           return {
@@ -155,9 +148,7 @@ export const useWorkspace = create<WorkspaceStore>()(
       },
 
       closeMatching(predicate) {
-        // Use the existing closeTab so behaviour stays consistent (last-tab fallback,
-        // neighbour focus). Snapshot ids first — closeTab mutates the array we'd be
-        // iterating.
+        // Snapshot ids first — closeTab mutates the array we'd be iterating.
         const state = get()
         const group = getFocusedGroup(state)
         if (!group) return
@@ -169,15 +160,29 @@ export const useWorkspace = create<WorkspaceStore>()(
           get().closeTab(id)
         }
       },
+
+      setSidebar(section) {
+        set((state) =>
+          state.selectedSidebar === section ? state : { ...state, selectedSidebar: section },
+        )
+      },
+
+      toggleSidebar(section) {
+        set((state) => ({
+          ...state,
+          selectedSidebar: state.selectedSidebar === section ? null : section,
+        }))
+      },
     }),
     {
-      name: 'openalice.workspace.v1',
-      version: 1,
+      name: 'openalice.workspace.v2',
+      version: 2,
       // Persist only the data shape — actions are recreated by the store factory.
       partialize: (state) => ({
         tabs: state.tabs,
         tree: state.tree,
         focusedGroupId: state.focusedGroupId,
+        selectedSidebar: state.selectedSidebar,
       }),
     },
   ),

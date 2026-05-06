@@ -21,12 +21,32 @@ export type ViewSpec =
   | { kind: 'news';           params: Record<string, never> }
   | { kind: 'market-list';    params: Record<string, never> }
   | { kind: 'market-detail';  params: { assetClass: 'equity' | 'crypto' | 'currency' | 'commodity'; symbol: string } }
-  | { kind: 'trading-as-git'; params: Record<string, never> }
   | { kind: 'settings';       params: { category: 'general' | 'ai-provider' | 'trading' | 'connectors' | 'market-data' | 'news-collector' } }
   | { kind: 'uta-detail';     params: { id: string } }
   | { kind: 'dev';            params: { tab: 'connectors' | 'tools' | 'sessions' | 'snapshots' | 'logs' } }
 
 export type ViewKind = ViewSpec['kind']
+
+/**
+ * Activity Bar sections — the left-rail icon set. Each section may have its
+ * own secondary sidebar; clicking the activity icon toggles which sidebar
+ * is shown. Decoupled from focused-tab kind: the sidebar you see is whichever
+ * section the user picked, regardless of what tab is focused.
+ *
+ * Note: trading-as-git has no associated tab kind — it's sidebar-only
+ * (the approval queue lives in the sidebar; future commit-detail tabs will
+ * be opened from there).
+ */
+export type ActivitySection =
+  | 'chat'
+  | 'trading-as-git'
+  | 'settings'
+  | 'dev'
+  | 'market'
+  | 'portfolio'
+  | 'automation'
+  | 'news'
+  | 'diary'
 
 export interface Tab {
   id: string
@@ -47,6 +67,11 @@ export interface WorkspaceState {
   tabs: Record<string, Tab>
   tree: WorkspaceTree
   focusedGroupId: string
+  /**
+   * Which sidebar is currently shown. Independent of focused tab — the
+   * user picks via ActivityBar. `null` means no sidebar (all collapsed).
+   */
+  selectedSidebar: ActivitySection | null
 }
 
 /**

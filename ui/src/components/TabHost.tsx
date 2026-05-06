@@ -3,6 +3,7 @@ import { useWorkspace } from '../tabs/store'
 import { type Tab } from '../tabs/types'
 import { getView } from '../tabs/registry'
 import { TabStrip } from './TabStrip'
+import { EmptyEditor } from './EmptyEditor'
 
 /**
  * The main editor area — replaces the old `<Routes>` block.
@@ -34,15 +35,19 @@ export function TabHost() {
     <div className="flex flex-col flex-1 min-h-0">
       <TabStrip />
       <div className="relative flex-1 min-h-0">
-        {tabIds.map((id) => {
-          const tab = tabsMap[id]
-          if (!tab) return null
-          const isActive = id === activeTabId
-          // Mobile: only render the active tab to avoid blowing memory and
-          // because we don't even have a strip to switch tabs from.
-          if (!isDesktop && !isActive) return null
-          return <TabFrame key={id} tab={tab} visible={isActive} />
-        })}
+        {tabIds.length === 0 ? (
+          <EmptyEditor />
+        ) : (
+          tabIds.map((id) => {
+            const tab = tabsMap[id]
+            if (!tab) return null
+            const isActive = id === activeTabId
+            // Mobile: only render the active tab to avoid blowing memory and
+            // because we don't even have a strip to switch tabs from.
+            if (!isDesktop && !isActive) return null
+            return <TabFrame key={id} tab={tab} visible={isActive} />
+          })
+        )}
       </div>
     </div>
   )

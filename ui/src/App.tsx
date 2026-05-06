@@ -5,10 +5,9 @@ import { Sidebar } from './components/Sidebar'
 import { TabHost } from './components/TabHost'
 import { ChannelConfigModal } from './components/ChannelConfigModal'
 import { ChannelsProvider, useChannels } from './contexts/ChannelsContext'
-import { findSectionForKind } from './sections'
+import { findSectionForActivity } from './sections'
 import { UrlAdopter } from './tabs/UrlAdopter'
 import { useWorkspace } from './tabs/store'
-import { getFocusedTab } from './tabs/types'
 
 /**
  * Activity-bar pages — only items that appear as icons in the ActivityBar.
@@ -44,8 +43,8 @@ export function App() {
 
 function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const focusedKind = useWorkspace((state) => getFocusedTab(state)?.spec.kind ?? null)
-  const section = findSectionForKind(focusedKind)
+  const selectedSidebar = useWorkspace((state) => state.selectedSidebar)
+  const section = findSectionForActivity(selectedSidebar)
   const isDesktop = useIsDesktop()
   const showSidebarPanel = isDesktop && section != null
 

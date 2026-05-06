@@ -38,7 +38,8 @@ export function UrlAdopter() {
         <Route path="/news" element={<AdoptStatic spec={{ kind: 'news', params: {} }} />} />
         <Route path="/market" element={<AdoptStatic spec={{ kind: 'market-list', params: {} }} />} />
         <Route path="/market/:assetClass/:symbol" element={<AdoptMarketDetail />} />
-        <Route path="/trading-as-git" element={<AdoptStatic spec={{ kind: 'trading-as-git', params: {} }} />} />
+        {/* /trading-as-git no longer creates a tab — sidebar-only activity. */}
+        <Route path="/trading-as-git" element={<SetSidebarOnly section="trading-as-git" />} />
 
         {/* Settings — one entry per category */}
         <Route path="/settings" element={<AdoptStatic spec={{ kind: 'settings', params: { category: 'general' } }} />} />
@@ -134,6 +135,18 @@ function AdoptDev() {
 function RedirectUtaDetail() {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/settings/uta/${id ?? ''}`} replace />
+}
+
+/**
+ * Some activities have no tab kind (e.g. trading-as-git is sidebar-only).
+ * Visiting their URL should just open the sidebar; no tab gets created.
+ */
+function SetSidebarOnly({ section }: { section: import('./types').ActivitySection }) {
+  const setSidebar = useWorkspace((state) => state.setSidebar)
+  useEffect(() => {
+    setSidebar(section)
+  }, [section, setSidebar])
+  return null
 }
 
 /**

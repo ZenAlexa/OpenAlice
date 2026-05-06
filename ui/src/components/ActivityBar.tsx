@@ -1,8 +1,26 @@
 import { type ReactNode } from 'react'
 import { type Page } from '../App'
 import { useWorkspace } from '../tabs/store'
-import { getFocusedTab } from '../tabs/types'
-import { defaultSpecForActivity, getView } from '../tabs/registry'
+import type { ActivitySection } from '../tabs/types'
+
+/**
+ * Map ActivityBar page enum (visual layout grouping) to the ActivitySection
+ * used by the workspace store. Names are 1:1 except for Market, which is
+ * `market` in store but `'market'` page label.
+ */
+function activitySectionFor(page: Page): ActivitySection {
+  switch (page) {
+    case 'chat':           return 'chat'
+    case 'trading-as-git': return 'trading-as-git'
+    case 'settings':       return 'settings'
+    case 'dev':            return 'dev'
+    case 'market':         return 'market'
+    case 'portfolio':      return 'portfolio'
+    case 'automation':     return 'automation'
+    case 'news':           return 'news'
+    case 'diary':          return 'diary'
+  }
+}
 
 interface ActivityBarProps {
   open: boolean
@@ -146,10 +164,8 @@ const INDICATOR_STYLE = { background: '#58a6ff' }
 // ==================== ActivityBar ====================
 
 export function ActivityBar({ open, onClose }: ActivityBarProps) {
-  const focusedKind = useWorkspace((state) => getFocusedTab(state)?.spec.kind ?? null)
-  const openOrFocus = useWorkspace((state) => state.openOrFocus)
-  // Derived: which activity icon should light up given the focused tab's kind.
-  const activeIcon = focusedKind ? getView(focusedKind).activityIcon : null
+  const selectedSidebar = useWorkspace((state) => state.selectedSidebar)
+  const toggleSidebar = useWorkspace((state) => state.toggleSidebar)
 
   return (
     <>
@@ -194,11 +210,11 @@ export function ActivityBar({ open, onClose }: ActivityBarProps) {
               )}
               <div className="flex flex-col gap-0.5">
                 {section.items.map((item) => {
-                  const isActive = activeIcon === item.page
+                  const sec = activitySectionFor(item.page)
+                  const isActive = selectedSidebar === sec
                   const handleClick = () => {
                     onClose()
-                    const spec = defaultSpecForActivity(item.page)
-                    if (spec) openOrFocus(spec)
+                    toggleSidebar(sec)
                   }
                   return (
                     <button

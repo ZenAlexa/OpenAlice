@@ -5,14 +5,13 @@ import { specEquals, getFocusedGroup, getFocusedTab, type ViewSpec } from '../ty
 // Reset zustand state + localStorage before each test so cases stay isolated.
 function resetStore() {
   localStorage.clear()
-  // Re-build initial state by replacing the slice. We can't call the
-  // factory directly because of zustand's internal hydration — easier to
-  // manually set known-good initial state.
-  const id = crypto.randomUUID()
+  // Phase 2 initial state: empty group, no sidebar selected. Tests build up
+  // tabs explicitly via openOrFocus.
   useWorkspace.setState({
-    tabs: { [id]: { id, spec: { kind: 'chat', params: { channelId: 'default' } } } },
-    tree: { kind: 'leaf', group: { id: 'g1', tabIds: [id], activeTabId: id } },
+    tabs: {},
+    tree: { kind: 'leaf', group: { id: 'g1', tabIds: [], activeTabId: null } },
     focusedGroupId: 'g1',
+    selectedSidebar: null,
   })
 }
 
@@ -57,41 +56,36 @@ describe('specEquals', () => {
 // ==================== openOrFocus ====================
 
 describe('openOrFocus', () => {
-  it('focuses an existing tab if spec already open', () => {
-    const beforeIds = getFocusedGroup(useWorkspace.getState())!.tabIds
-    expect(beforeIds).toHaveLength(1)
-
-    // Default tab is { kind: 'chat', channelId: 'default' } — opening the
-    // same spec must NOT create a new tab.
+  it('appends and focuses a new tab when none exist', () => {
     useWorkspace.getState().openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
+    const group = getFocusedGroup(useWorkspace.getState())!
+    expect(group.tabIds).toHaveLength(1)
+    expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('chat')
+  })
 
-    const afterIds = getFocusedGroup(useWorkspace.getState())!.tabIds
-    expect(afterIds).toHaveLength(1)
-    expect(afterIds[0]).toBe(beforeIds[0])
+  it('focuses an existing tab when same spec is opened twice', () => {
+    const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
+    s.openOrFocus({ kind: 'diary', params: {} })
+
+    // Diary is focused. Re-open default chat — should switch focus, not create a new tab.
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
+
+    const group = getFocusedGroup(useWorkspace.getState())!
+    expect(group.tabIds).toHaveLength(2)
+    expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('chat')
   })
 
   it('appends and focuses a new tab when spec is novel', () => {
-    useWorkspace.getState().openOrFocus({ kind: 'market-detail', params: { assetClass: 'equity', symbol: 'AAPL' } })
+    const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
+    s.openOrFocus({ kind: 'market-detail', params: { assetClass: 'equity', symbol: 'AAPL' } })
 
     const group = getFocusedGroup(useWorkspace.getState())!
     expect(group.tabIds).toHaveLength(2)
     const focused = getFocusedTab(useWorkspace.getState())
     expect(focused?.spec).toEqual({ kind: 'market-detail', params: { assetClass: 'equity', symbol: 'AAPL' } })
-    // Newest tab is appended at the end.
     expect(group.activeTabId).toBe(group.tabIds[1])
-  })
-
-  it('focusing an existing non-active tab makes it active without re-creating', () => {
-    const s = useWorkspace.getState()
-    s.openOrFocus({ kind: 'diary', params: {} })
-    s.openOrFocus({ kind: 'portfolio', params: {} })
-    // Now portfolio is active; switch back to chat.
-    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
-
-    const focused = getFocusedTab(useWorkspace.getState())
-    expect(focused?.spec.kind).toBe('chat')
-    // No new tabs were created — chat already existed.
-    expect(getFocusedGroup(useWorkspace.getState())!.tabIds).toHaveLength(3)
   })
 })
 
@@ -100,18 +94,16 @@ describe('openOrFocus', () => {
 describe('closeTab', () => {
   it('closing the active tab focuses the right neighbour', () => {
     const s = useWorkspace.getState()
-    s.openOrFocus({ kind: 'diary', params: {} })       // tab 1: diary, focused
-    s.openOrFocus({ kind: 'portfolio', params: {} })   // tab 2: portfolio, focused
-    // Order: [chat-default, diary, portfolio], active = portfolio (index 2)
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })  // [chat]
+    s.openOrFocus({ kind: 'diary', params: {} })                       // [chat, diary]
+    s.openOrFocus({ kind: 'portfolio', params: {} })                   // [chat, diary, portfolio], focus = portfolio
 
-    // Close diary (middle) — chat is left neighbour, portfolio is right.
-    // Active tab was portfolio, NOT diary, so closing diary doesn't change active.
-    const groupBefore = getFocusedGroup(useWorkspace.getState())!
-    const diaryId = groupBefore.tabIds[1]
+    // Close diary (middle, not active) — focus stays on portfolio.
+    const ids = getFocusedGroup(useWorkspace.getState())!.tabIds
+    const diaryId = ids[1]
     s.closeTab(diaryId)
 
-    const after = getFocusedGroup(useWorkspace.getState())!
-    expect(after.tabIds).toHaveLength(2)
+    expect(getFocusedGroup(useWorkspace.getState())!.tabIds).toHaveLength(2)
     expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('portfolio')
   })
 
@@ -119,42 +111,27 @@ describe('closeTab', () => {
     const s = useWorkspace.getState()
     s.openOrFocus({ kind: 'diary', params: {} })
     s.openOrFocus({ kind: 'portfolio', params: {} })
-    // Active = portfolio (rightmost). Close it.
     const portfolioId = getFocusedGroup(useWorkspace.getState())!.activeTabId!
     s.closeTab(portfolioId)
-
     expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('diary')
   })
 
-  it('closing a non-active tab does not change focus', () => {
+  it('closing the last tab leaves an empty group with null activeTabId', () => {
     const s = useWorkspace.getState()
-    s.openOrFocus({ kind: 'diary', params: {} })
-    s.openOrFocus({ kind: 'portfolio', params: {} })
-    // Active = portfolio. Close diary (middle, not active).
-    const ids = getFocusedGroup(useWorkspace.getState())!.tabIds
-    const diaryId = ids[1]
-    s.closeTab(diaryId)
-
-    expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('portfolio')
-  })
-
-  it('closing the last tab opens default chat as fallback', () => {
-    const s = useWorkspace.getState()
-    // Start with default chat. Close it.
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
     const onlyId = getFocusedGroup(useWorkspace.getState())!.tabIds[0]
     s.closeTab(onlyId)
 
     const group = getFocusedGroup(useWorkspace.getState())!
-    expect(group.tabIds).toHaveLength(1)
-    const focused = getFocusedTab(useWorkspace.getState())
-    expect(focused?.spec).toEqual({ kind: 'chat', params: { channelId: 'default' } })
-    // The fallback tab is a new instance — id should differ from the closed one.
-    expect(focused?.id).not.toBe(onlyId)
+    expect(group.tabIds).toHaveLength(0)
+    expect(group.activeTabId).toBeNull()
   })
 
   it('closeTab is a no-op for unknown ids', () => {
+    const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
     const before = useWorkspace.getState()
-    useWorkspace.getState().closeTab('nonexistent-id')
+    s.closeTab('nonexistent-id')
     const after = useWorkspace.getState()
     expect(after.tabs).toEqual(before.tabs)
     expect(after.tree).toEqual(before.tree)
@@ -166,14 +143,16 @@ describe('closeTab', () => {
 describe('focusTab', () => {
   it('switches focus to a known tab', () => {
     const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
     s.openOrFocus({ kind: 'diary', params: {} })
     const ids = getFocusedGroup(useWorkspace.getState())!.tabIds
-    s.focusTab(ids[0]) // back to chat
+    s.focusTab(ids[0])
     expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('chat')
   })
 
   it('is a no-op for unknown ids', () => {
     const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
     const before = getFocusedTab(useWorkspace.getState())?.id
     s.focusTab('nonexistent')
     const after = getFocusedTab(useWorkspace.getState())?.id
@@ -186,10 +165,10 @@ describe('focusTab', () => {
 describe('closeMatching', () => {
   it('closes every tab whose spec matches the predicate', () => {
     const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
     s.openOrFocus({ kind: 'chat', params: { channelId: 'a' } })
     s.openOrFocus({ kind: 'chat', params: { channelId: 'b' } })
     s.openOrFocus({ kind: 'diary', params: {} })
-    // Group: [chat:default, chat:a, chat:b, diary] = 4 tabs
 
     s.closeMatching((spec: ViewSpec) =>
       spec.kind === 'chat' && spec.params.channelId !== 'default',
@@ -200,16 +179,53 @@ describe('closeMatching', () => {
     expect(remaining).toEqual(['chat', 'diary'])
   })
 
-  it('closing all tabs via closeMatching still triggers default-chat fallback', () => {
+  it('closing all tabs via closeMatching leaves an empty group', () => {
     const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
     s.openOrFocus({ kind: 'diary', params: {} })
     s.closeMatching(() => true)
 
     const group = getFocusedGroup(useWorkspace.getState())!
-    expect(group.tabIds).toHaveLength(1)
-    expect(getFocusedTab(useWorkspace.getState())?.spec).toEqual({
-      kind: 'chat',
-      params: { channelId: 'default' },
-    })
+    expect(group.tabIds).toHaveLength(0)
+    expect(group.activeTabId).toBeNull()
+  })
+})
+
+// ==================== sidebar selection ====================
+
+describe('setSidebar / toggleSidebar', () => {
+  it('setSidebar replaces the current selection', () => {
+    const s = useWorkspace.getState()
+    s.setSidebar('chat')
+    expect(useWorkspace.getState().selectedSidebar).toBe('chat')
+    s.setSidebar('settings')
+    expect(useWorkspace.getState().selectedSidebar).toBe('settings')
+    s.setSidebar(null)
+    expect(useWorkspace.getState().selectedSidebar).toBeNull()
+  })
+
+  it('toggleSidebar opens, then collapses on second click of same section', () => {
+    const s = useWorkspace.getState()
+    expect(useWorkspace.getState().selectedSidebar).toBeNull()
+    s.toggleSidebar('settings')
+    expect(useWorkspace.getState().selectedSidebar).toBe('settings')
+    s.toggleSidebar('settings')
+    expect(useWorkspace.getState().selectedSidebar).toBeNull()
+  })
+
+  it('toggleSidebar to a different section switches without collapsing first', () => {
+    const s = useWorkspace.getState()
+    s.toggleSidebar('settings')
+    s.toggleSidebar('dev')
+    expect(useWorkspace.getState().selectedSidebar).toBe('dev')
+  })
+
+  it('sidebar selection is independent of focused tab', () => {
+    const s = useWorkspace.getState()
+    s.openOrFocus({ kind: 'chat', params: { channelId: 'default' } })
+    s.setSidebar('settings')
+    // Focused tab is chat; sidebar is settings — they don't have to match.
+    expect(useWorkspace.getState().selectedSidebar).toBe('settings')
+    expect(getFocusedTab(useWorkspace.getState())?.spec.kind).toBe('chat')
   })
 })
