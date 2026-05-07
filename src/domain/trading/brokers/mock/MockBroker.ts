@@ -18,7 +18,7 @@
 
 import { z } from 'zod'
 import Decimal from 'decimal.js'
-import { Contract, ContractDescription, ContractDetails, Order, OrderState, UNSET_DECIMAL } from '@traderalice/ibkr'
+import { Contract, ContractDescription, ContractDetails, Order, OrderState, UNSET_DECIMAL, UNSET_DOUBLE } from '@traderalice/ibkr'
 import type {
   IBroker,
   AccountCapabilities,
@@ -31,6 +31,20 @@ import type {
   TpSlParams,
 } from '../types.js'
 import '../../contract-ext.js'
+
+// ==================== Helpers ====================
+
+/**
+ * Per-contract multiplier as a Decimal. Defaults to 1 when the contract
+ * doesn't declare one (stocks, crypto). Options need ×100; futures use
+ * the contract-spec value (50 for ES, 5 for MES, etc.).
+ */
+function multiplierOf(c: Contract): Decimal {
+  const m = c.multiplier
+  if (!m) return new Decimal(1)
+  const d = new Decimal(m)
+  return d.isZero() ? new Decimal(1) : d
+}
 
 // ==================== Internal types ====================
 
@@ -349,9 +363,10 @@ export class MockBroker implements IBroker {
     let marketValueAcc = new Decimal(0)
     for (const pos of this._positions.values()) {
       const price = pos.marketPriceOverride ?? this._markPriceFor(pos.contract) ?? pos.avgCost
-      const posValue = pos.quantity.mul(price)
+      const mult = multiplierOf(pos.contract)
+      const posValue = pos.quantity.mul(price).mul(mult)
       marketValueAcc = marketValueAcc.plus(posValue)
-      unrealizedPnL = unrealizedPnL.plus(pos.quantity.mul(price.minus(pos.avgCost)))
+      unrealizedPnL = unrealizedPnL.plus(pos.quantity.mul(price.minus(pos.avgCost)).mul(mult))
     }
 
     return {
@@ -369,6 +384,11 @@ export class MockBroker implements IBroker {
     const result: Position[] = []
     for (const pos of this._positions.values()) {
       const price = pos.marketPriceOverride ?? this._markPriceFor(pos.contract) ?? pos.avgCost
+      // Per IBroker.Position contract: marketValue / unrealizedPnL must be
+      // multiplier-applied at the broker layer. For OPT (×100) and futures
+      // (per-contract size), the simulator has to fold multiplier in here
+      // or downstream cost-basis ends up reporting per-unit numbers.
+      const mult = multiplierOf(pos.contract)
       result.push({
         contract: pos.contract,
         currency: pos.contract.currency || 'USD',
@@ -376,9 +396,10 @@ export class MockBroker implements IBroker {
         quantity: pos.quantity,
         avgCost: pos.avgCost.toString(),
         marketPrice: price.toString(),
-        marketValue: pos.quantity.mul(price).toString(),
-        unrealizedPnL: pos.quantity.mul(price.minus(pos.avgCost)).toString(),
+        marketValue: pos.quantity.mul(price).mul(mult).toString(),
+        unrealizedPnL: pos.quantity.mul(price.minus(pos.avgCost)).mul(mult).toString(),
         realizedPnL: '0',
+        ...(pos.contract.multiplier && { multiplier: pos.contract.multiplier }),
         ...(pos.avgCostSource && { avgCostSource: pos.avgCostSource }),
       })
     }
@@ -520,11 +541,33 @@ export class MockBroker implements IBroker {
   }
 
   /**
-   * Simulate an external balance change Alice didn't initiate (空投, transfer-in,
-   * staking reward). Adds a position without going through the order pipeline
-   * and tags `avgCostSource: 'wallet'` so UTA's reconcile pipeline kicks in
-   * and synthesizes a `reconcileBalance` commit at observed markPrice — matching
-   * how CCXT spot synthesis behaves in real life.
+   * Build a Contract from caller-supplied partial fields, defaulting only
+   * the housekeeping bits (exchange / currency). Carries through every
+   * IBKR contract field that distinguishes derivative instruments
+   * (lastTradeDateOrContractMonth / strike / right / multiplier) so
+   * options + futures + FOP positions render correctly downstream.
+   */
+  private _buildContract(nativeKey: string, partial: Partial<Contract> | undefined): Contract {
+    const c = new Contract()
+    c.symbol = partial?.symbol ?? nativeKey
+    c.localSymbol = partial?.localSymbol ?? nativeKey
+    c.secType = partial?.secType ?? 'CRYPTO'
+    c.exchange = partial?.exchange ?? 'MOCK'
+    c.currency = partial?.currency ?? 'USD'
+    if (partial?.lastTradeDateOrContractMonth) c.lastTradeDateOrContractMonth = partial.lastTradeDateOrContractMonth
+    if (partial?.strike != null && partial.strike !== UNSET_DOUBLE) c.strike = partial.strike
+    if (partial?.right) c.right = partial.right
+    if (partial?.multiplier) c.multiplier = partial.multiplier
+    return c
+  }
+
+  /**
+   * Simulate an external balance change Alice didn't initiate (airdrop,
+   * transfer-in, staking reward, off-exchange option assignment). Adds a
+   * position without going through the order pipeline and tags
+   * `avgCostSource: 'wallet'` so UTA's reconcile pipeline kicks in and
+   * synthesizes a `reconcileBalance` commit at observed markPrice —
+   * matching how CCXT spot synthesis behaves in real life.
    *
    * Cash is unchanged (deposit, not purchase).
    */
@@ -543,16 +586,9 @@ export class MockBroker implements IBroker {
       return
     }
 
-    const contract = new Contract()
-    contract.symbol = params.contract?.symbol ?? params.nativeKey
-    contract.localSymbol = params.contract?.localSymbol ?? params.nativeKey
-    contract.secType = params.contract?.secType ?? 'CRYPTO'
-    contract.exchange = params.contract?.exchange ?? 'MOCK'
-    contract.currency = params.contract?.currency ?? 'USD'
     const markPrice = this._markPrices.get(params.nativeKey) ?? new Decimal(0)
-
     this._positions.set(params.nativeKey, {
-      contract,
+      contract: this._buildContract(params.nativeKey, params.contract),
       side: 'long',
       quantity: qty,
       avgCost: markPrice,
@@ -595,14 +631,8 @@ export class MockBroker implements IBroker {
     }
 
     if (!existing) {
-      const contract = new Contract()
-      contract.symbol = params.contract?.symbol ?? params.nativeKey
-      contract.localSymbol = params.contract?.localSymbol ?? params.nativeKey
-      contract.secType = params.contract?.secType ?? 'CRYPTO'
-      contract.exchange = params.contract?.exchange ?? 'MOCK'
-      contract.currency = params.contract?.currency ?? 'USD'
       this._positions.set(params.nativeKey, {
-        contract,
+        contract: this._buildContract(params.nativeKey, params.contract),
         side: 'long',
         quantity: qty,
         avgCost: price,
@@ -625,7 +655,7 @@ export class MockBroker implements IBroker {
   getSimulatorState(): {
     cash: string
     markPrices: Array<{ nativeKey: string; price: string }>
-    positions: Array<{ nativeKey: string; symbol: string; localSymbol?: string; secType?: string; side: 'long' | 'short'; quantity: string; avgCost: string; avgCostSource?: 'broker' | 'wallet' }>
+    positions: Array<{ nativeKey: string; symbol: string; localSymbol?: string; secType?: string; side: 'long' | 'short'; quantity: string; avgCost: string; avgCostSource?: 'broker' | 'wallet'; expiry?: string; strike?: number; right?: string; multiplier?: string }>
     pendingOrders: Array<{ orderId: string; nativeKey: string; symbol: string; action: string; orderType: string; totalQuantity: string; lmtPrice?: string; auxPrice?: string }>
   } {
     return {
@@ -640,6 +670,10 @@ export class MockBroker implements IBroker {
         quantity: p.quantity.toString(),
         avgCost: p.avgCost.toString(),
         avgCostSource: p.avgCostSource,
+        expiry: p.contract.lastTradeDateOrContractMonth || undefined,
+        strike: p.contract.strike !== UNSET_DOUBLE ? p.contract.strike : undefined,
+        right: p.contract.right || undefined,
+        multiplier: p.contract.multiplier || undefined,
       })),
       pendingOrders: [...this._orders.values()]
         .filter(o => o.status === 'Submitted')

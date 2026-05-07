@@ -6,7 +6,20 @@
 
 import { useMemo } from 'react'
 import { Section } from '../../components/form'
-import type { SimulatorState } from '../../api/simulator'
+import type { SimulatorState, SimulatorPosition } from '../../api/simulator'
+import { describeInstrument } from './instruments'
+
+/** Compose the display name from contract metadata; falls back to nativeKey. */
+function describePosition(p: SimulatorPosition): string {
+  return describeInstrument({
+    symbol: p.symbol,
+    secType: p.secType,
+    lastTradeDateOrContractMonth: p.expiry,
+    strike: p.strike,
+    right: p.right as 'C' | 'P' | 'CALL' | 'PUT' | undefined,
+    multiplier: p.multiplier,
+  })
+}
 
 export function Positions({ state }: { state: SimulatorState }) {
   const markByKey = useMemo(() => {
@@ -38,21 +51,27 @@ export function Positions({ state }: { state: SimulatorState }) {
               const mark = markByKey.get(p.nativeKey)
               const qty = Number(p.quantity)
               const avg = Number(p.avgCost)
+              // Match IBroker.Position contract: PnL is multiplier-applied.
+              // Defaults to 1 for stocks / crypto; OPT typically ×100; futures vary.
+              const mult = p.multiplier ? Number(p.multiplier) || 1 : 1
               const pnl = mark && Number.isFinite(qty) && Number.isFinite(avg)
-                ? (Number(mark) - avg) * qty * (p.side === 'long' ? 1 : -1)
+                ? (Number(mark) - avg) * qty * mult * (p.side === 'long' ? 1 : -1)
                 : null
               const pnlClass = pnl == null ? 'text-text-muted' : pnl > 0 ? 'text-green' : pnl < 0 ? 'text-red' : 'text-text'
               return (
                 <tr key={p.nativeKey} className="text-text">
                   <td className="py-1 pr-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono text-xs">{p.nativeKey}</span>
+                      <span className="font-medium text-text">{describePosition(p)}</span>
                       {p.secType && (
                         <span className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded bg-bg-tertiary text-text-muted/80">{p.secType}</span>
                       )}
                       <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${p.side === 'long' ? 'bg-green/15 text-green' : 'bg-red/15 text-red'}`}>
                         {p.side}
                       </span>
+                      {p.multiplier && p.multiplier !== '1' && (
+                        <span className="text-[9px] text-text-muted/60" title={`Each contract = ${p.multiplier} units`}>×{p.multiplier}</span>
+                      )}
                       {p.avgCostSource === 'wallet' && (
                         <span className="text-[9px] text-text-muted/60" title="Cost basis derived from UTA reconcile pipeline (wallet-source position)">wallet</span>
                       )}

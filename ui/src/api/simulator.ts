@@ -22,6 +22,11 @@ export interface SimulatorPosition {
   quantity: string
   avgCost: string
   avgCostSource?: 'broker' | 'wallet'
+  /** YYYYMMDD (OPT/FOP) or YYYYMM (FUT). */
+  expiry?: string
+  strike?: number
+  right?: string
+  multiplier?: string
 }
 
 export interface SimulatorPendingOrder {
@@ -79,12 +84,49 @@ export const simulatorApi = {
   cancelOrder: (utaId: string, orderId: string) =>
     postJson<{ ok: true }>(`/api/simulator/uta/${encodeURIComponent(utaId)}/orders/${encodeURIComponent(orderId)}/cancel`, {}),
 
-  externalDeposit: (utaId: string, params: { nativeKey: string; quantity: string; contract?: { symbol?: string; localSymbol?: string; secType?: string; exchange?: string; currency?: string } }) =>
+  externalDeposit: (utaId: string, params: SimulatorExternalDepositParams) =>
     postJson<{ ok: true }>(`/api/simulator/uta/${encodeURIComponent(utaId)}/external-deposit`, params),
 
   externalWithdraw: (utaId: string, nativeKey: string, quantity: string) =>
     postJson<{ ok: true }>(`/api/simulator/uta/${encodeURIComponent(utaId)}/external-withdraw`, { nativeKey, quantity }),
 
-  externalTrade: (utaId: string, params: { nativeKey: string; side: 'BUY' | 'SELL'; quantity: string; price: string; contract?: { symbol?: string; localSymbol?: string; secType?: string; exchange?: string; currency?: string } }) =>
+  externalTrade: (utaId: string, params: SimulatorExternalTradeParams) =>
     postJson<{ ok: true }>(`/api/simulator/uta/${encodeURIComponent(utaId)}/external-trade`, params),
+}
+
+// ==================== Contract shapes ====================
+
+/**
+ * Subset of IBKR Contract fields the simulator accepts. `lastTradeDateOrContractMonth`,
+ * `strike`, `right`, `multiplier` enable OPT/FOP/FUT positions; bare CRYPTO/STK
+ * just need `symbol` + `secType`.
+ */
+export interface SimulatorContractInput {
+  symbol?: string
+  localSymbol?: string
+  secType?: string
+  exchange?: string
+  currency?: string
+  /** YYYYMMDD for OPT/FOP, YYYYMM for FUT. */
+  lastTradeDateOrContractMonth?: string
+  /** Option strike (number). */
+  strike?: number
+  /** Option right: C / P (or CALL / PUT). */
+  right?: 'C' | 'P' | 'CALL' | 'PUT'
+  /** Shares per contract: typically "100" for OPT, "1" for stocks/crypto. */
+  multiplier?: string
+}
+
+export interface SimulatorExternalDepositParams {
+  nativeKey: string
+  quantity: string
+  contract?: SimulatorContractInput
+}
+
+export interface SimulatorExternalTradeParams {
+  nativeKey: string
+  side: 'BUY' | 'SELL'
+  quantity: string
+  price: string
+  contract?: SimulatorContractInput
 }

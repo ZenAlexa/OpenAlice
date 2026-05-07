@@ -15,6 +15,8 @@
 import { useMemo, useState } from 'react'
 import { api } from '../../api'
 import { simulatorApi, type SimulatorState } from '../../api/simulator'
+import { InstrumentInput } from './InstrumentInput'
+import { buildInstrument, type InstrumentDraft } from './instruments'
 
 const inputClass =
   'px-2 py-1 bg-bg text-text border border-border rounded text-sm outline-none transition-colors focus:border-accent'
@@ -135,96 +137,126 @@ function DepositTab({ utaId, knownKeys, run, loading }: {
   run: (label: string, fn: () => Promise<unknown>) => Promise<void>
   loading: boolean
 }) {
-  const [key, setKey] = useState('')
+  const [draft, setDraft] = useState<InstrumentDraft>({ symbol: '', secType: 'CRYPTO' })
   const [qty, setQty] = useState('')
-  const [secType, setSecType] = useState<'CRYPTO' | 'CRYPTO_PERP' | 'STK'>('CRYPTO')
+  const [withdrawKey, setWithdrawKey] = useState('')
+  const [withdrawQty, setWithdrawQty] = useState('')
   const [mode, setMode] = useState<'in' | 'out'>('in')
 
-  const submit = () => {
-    if (!key || !qty) return
-    if (mode === 'in') {
-      run(
-        `Deposit ${qty} ${key}`,
-        async () => {
-          await simulatorApi.externalDeposit(utaId, {
-            nativeKey: key,
-            quantity: qty,
-            contract: { symbol: key, secType },
-          })
-          setQty('')
-        },
-      )
-    } else {
-      run(
-        `Withdraw ${qty} ${key}`,
-        async () => {
-          await simulatorApi.externalWithdraw(utaId, key, qty)
-          setQty('')
-        },
-      )
-    }
+  const built = mode === 'in' ? buildInstrument(draft) : null
+  const draftError = built && 'error' in built ? built.error : null
+  const draftOk = built && 'nativeKey' in built ? built : null
+
+  const submitDeposit = () => {
+    if (!draftOk || !qty) return
+    run(
+      `Deposit ${qty} ${draftOk.nativeKey}`,
+      async () => {
+        await simulatorApi.externalDeposit(utaId, {
+          nativeKey: draftOk.nativeKey,
+          quantity: qty,
+          contract: draftOk.contract,
+        })
+        setQty('')
+      },
+    )
+  }
+
+  const submitWithdraw = () => {
+    if (!withdrawKey || !withdrawQty) return
+    run(
+      `Withdraw ${withdrawQty} ${withdrawKey}`,
+      async () => {
+        await simulatorApi.externalWithdraw(utaId, withdrawKey, withdrawQty)
+        setWithdrawQty('')
+      },
+    )
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex rounded overflow-hidden border border-border">
-        <button
-          onClick={() => setMode('in')}
-          className={`px-2 py-1 text-xs ${mode === 'in' ? 'bg-green/20 text-green' : 'text-text-muted hover:text-text'}`}
-        >Deposit</button>
-        <button
-          onClick={() => setMode('out')}
-          className={`px-2 py-1 text-xs ${mode === 'out' ? 'bg-red/20 text-red' : 'text-text-muted hover:text-text'}`}
-        >Withdraw</button>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex rounded overflow-hidden border border-border">
+          <button
+            onClick={() => setMode('in')}
+            className={`px-2 py-1 text-xs ${mode === 'in' ? 'bg-green/20 text-green' : 'text-text-muted hover:text-text'}`}
+          >Deposit</button>
+          <button
+            onClick={() => setMode('out')}
+            className={`px-2 py-1 text-xs ${mode === 'out' ? 'bg-red/20 text-red' : 'text-text-muted hover:text-text'}`}
+          >Withdraw</button>
+        </div>
+
+        {mode === 'in' ? (
+          <>
+            <InstrumentInput draft={draft} onChange={setDraft} />
+            <input
+              className={`${inputClassMono} w-24`}
+              placeholder="quantity"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitDeposit() }}
+            />
+            <button
+              disabled={loading || !draftOk || !qty}
+              onClick={submitDeposit}
+              className="btn-primary-sm"
+            >Deposit</button>
+            {draftOk && <span className="text-[11px] text-text-muted/70 font-mono">→ {draftOk.nativeKey}</span>}
+            {draftError && draft.symbol && <span className="text-[11px] text-yellow-400">{draftError}</span>}
+          </>
+        ) : (
+          <>
+            <KeySelect value={withdrawKey} onChange={setWithdrawKey} options={knownKeys} placeholder="native key" />
+            <input
+              className={`${inputClassMono} w-32`}
+              placeholder="quantity"
+              value={withdrawQty}
+              onChange={(e) => setWithdrawQty(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitWithdraw() }}
+            />
+            <button
+              disabled={loading || !withdrawKey || !withdrawQty}
+              onClick={submitWithdraw}
+              className="btn-primary-sm"
+            >Withdraw</button>
+          </>
+        )}
+
+        <span className="text-[11px] text-text-muted ml-auto">Cash unchanged. Triggers UTA reconcile pipeline.</span>
       </div>
-      <KeySelect value={key} onChange={setKey} options={knownKeys} placeholder="symbol" />
-      <input
-        className={`${inputClassMono} w-32`}
-        placeholder="quantity"
-        value={qty}
-        onChange={(e) => setQty(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
-      />
-      {mode === 'in' && (
-        <select value={secType} onChange={(e) => setSecType(e.target.value as 'CRYPTO' | 'CRYPTO_PERP' | 'STK')} className={`${inputClass} w-32`}>
-          <option value="CRYPTO">CRYPTO</option>
-          <option value="CRYPTO_PERP">CRYPTO_PERP</option>
-          <option value="STK">STK</option>
-        </select>
-      )}
-      <button disabled={loading || !key || !qty} onClick={submit} className="btn-primary-sm">
-        {mode === 'in' ? 'Deposit' : 'Withdraw'}
-      </button>
-      <span className="text-[11px] text-text-muted">Cash unchanged. Triggers UTA reconcile pipeline.</span>
     </div>
   )
 }
 
 // ==================== External Trade ====================
 
-function TradeTab({ utaId, knownKeys, run, loading }: {
+function TradeTab({ utaId, run, loading }: {
   utaId: string
   knownKeys: string[]
   run: (label: string, fn: () => Promise<unknown>) => Promise<void>
   loading: boolean
 }) {
-  const [key, setKey] = useState('')
+  const [draft, setDraft] = useState<InstrumentDraft>({ symbol: '', secType: 'CRYPTO' })
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY')
   const [qty, setQty] = useState('')
   const [price, setPrice] = useState('')
-  const [secType, setSecType] = useState<'CRYPTO' | 'CRYPTO_PERP' | 'STK'>('CRYPTO')
+
+  const built = buildInstrument(draft)
+  const draftError = 'error' in built ? built.error : null
+  const draftOk = 'nativeKey' in built ? built : null
 
   const submit = () => {
-    if (!key || !qty || !price) return
+    if (!draftOk || !qty || !price) return
     run(
-      `External ${side} ${qty} ${key} @ ${price}`,
+      `External ${side} ${qty} ${draftOk.nativeKey} @ ${price}`,
       async () => {
         await simulatorApi.externalTrade(utaId, {
-          nativeKey: key,
+          nativeKey: draftOk.nativeKey,
           side,
           quantity: qty,
           price,
-          contract: { symbol: key, secType },
+          contract: draftOk.contract,
         })
         setQty('')
       },
@@ -243,16 +275,13 @@ function TradeTab({ utaId, knownKeys, run, loading }: {
           className={`px-2 py-1 text-xs ${side === 'SELL' ? 'bg-red/20 text-red' : 'text-text-muted hover:text-text'}`}
         >SELL</button>
       </div>
-      <KeySelect value={key} onChange={setKey} options={knownKeys} placeholder="symbol" />
-      <input className={`${inputClassMono} w-28`} placeholder="qty" value={qty} onChange={(e) => setQty(e.target.value)} />
-      <input className={`${inputClassMono} w-28`} placeholder="price" value={price} onChange={(e) => setPrice(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit() }} />
-      <select value={secType} onChange={(e) => setSecType(e.target.value as 'CRYPTO' | 'CRYPTO_PERP' | 'STK')} className={`${inputClass} w-32`}>
-        <option value="CRYPTO">CRYPTO</option>
-        <option value="CRYPTO_PERP">CRYPTO_PERP</option>
-        <option value="STK">STK</option>
-      </select>
-      <button disabled={loading || !key || !qty || !price} onClick={submit} className="btn-primary-sm">Submit</button>
-      <span className="text-[11px] text-text-muted">Cash {side === 'BUY' ? '−' : '+'} qty × price.</span>
+      <InstrumentInput draft={draft} onChange={setDraft} />
+      <input className={`${inputClassMono} w-24`} placeholder="qty" value={qty} onChange={(e) => setQty(e.target.value)} />
+      <input className={`${inputClassMono} w-24`} placeholder="price" value={price} onChange={(e) => setPrice(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit() }} />
+      <button disabled={loading || !draftOk || !qty || !price} onClick={submit} className="btn-primary-sm">Submit</button>
+      {draftOk && <span className="text-[11px] text-text-muted/70 font-mono">→ {draftOk.nativeKey}</span>}
+      {draftError && draft.symbol && <span className="text-[11px] text-yellow-400">{draftError}</span>}
+      <span className="text-[11px] text-text-muted ml-auto">Cash {side === 'BUY' ? '−' : '+'} qty × price.</span>
     </div>
   )
 }

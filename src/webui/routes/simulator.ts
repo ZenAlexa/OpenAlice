@@ -39,16 +39,25 @@ const fillOrderSchema = z.object({
   qty: numericString.optional(),
 })
 
+// IBKR contract surface: includes derivative-distinguishing fields so the
+// simulator can model OPT/FOP/FUT/CASH/BOND alongside CRYPTO.
+const contractSchema = z.object({
+  symbol: z.string().optional(),
+  localSymbol: z.string().optional(),
+  secType: z.string().optional(),
+  exchange: z.string().optional(),
+  currency: z.string().optional(),
+  // Derivative metadata
+  lastTradeDateOrContractMonth: z.string().optional(),  // e.g. "20260720" or "202606"
+  strike: z.number().optional(),                         // option strike, e.g. 150
+  right: z.enum(['C', 'P', 'CALL', 'PUT']).optional(),    // option right
+  multiplier: z.string().optional(),                     // shares-per-contract, e.g. "100"
+})
+
 const externalDepositSchema = z.object({
   nativeKey: z.string().min(1),
   quantity: numericString,
-  contract: z.object({
-    symbol: z.string().optional(),
-    localSymbol: z.string().optional(),
-    secType: z.string().optional(),
-    exchange: z.string().optional(),
-    currency: z.string().optional(),
-  }).optional(),
+  contract: contractSchema.optional(),
 })
 
 const externalWithdrawSchema = z.object({
@@ -61,7 +70,7 @@ const externalTradeSchema = z.object({
   side: z.enum(['BUY', 'SELL']),
   quantity: numericString,
   price: numericString,
-  contract: externalDepositSchema.shape.contract,
+  contract: contractSchema.optional(),
 })
 
 // ==================== Helpers ====================
