@@ -12,6 +12,8 @@
 import { Contract, OrderState } from '@traderalice/ibkr'
 import '../../contract-ext.js'
 import type { CcxtMarket } from './ccxt-types.js'
+import { buildContract } from '../contract-builder.js'
+import type { SecType } from '../../contract-discipline.js'
 
 // ---- Symbol encoding for aliceId ----
 
@@ -60,17 +62,22 @@ export function makeOrderState(ccxtStatus: string | undefined): OrderState {
 
 /**
  * Convert a CcxtMarket to an IBKR Contract.
- * aliceId = "{exchangeName}-{encodeSymbol(market.symbol)}"
+ *
+ * NOTE: `localSymbol` here still carries CCXT's unified-symbol wire format
+ * ("BTC/USDT:USDT"). Phase 3 of the IBKR-as-truth refactor moves that to
+ * a broker-internal cache and emits a canonical localSymbol instead. For
+ * now we keep the wire format on the Contract because `contractToCcxt`
+ * (below) and order placement still read it.
  */
 export function marketToContract(market: CcxtMarket, exchangeName: string): Contract {
-  const c = new Contract()
-  c.symbol = market.base
-  c.secType = ccxtTypeToSecType(market.type)
-  c.exchange = exchangeName
-  c.currency = market.quote
-  c.localSymbol = market.symbol       // CCXT unified symbol, e.g. "BTC/USDT:USDT"
-  c.description = `${market.base}/${market.quote} ${market.type}${market.settle ? ` (${market.settle} settled)` : ''}`
-  return c
+  return buildContract({
+    symbol: market.base,
+    secType: ccxtTypeToSecType(market.type) as SecType,
+    exchange: exchangeName,
+    currency: market.quote,
+    localSymbol: market.symbol,       // CCXT unified symbol, e.g. "BTC/USDT:USDT"
+    description: `${market.base}/${market.quote} ${market.type}${market.settle ? ` (${market.settle} settled)` : ''}`,
+  })
 }
 
 /** Parse aliceId → CCXT unified symbol. */

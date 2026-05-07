@@ -25,6 +25,7 @@ import {
   type TpSlParams,
 } from '../types.js'
 import '../../contract-ext.js'
+import { buildPosition } from '../contract-builder.js'
 import { CCXT_CREDENTIAL_FIELDS, type CcxtBrokerConfig, type CcxtMarket, type FundingRate, type OrderBook, type OrderBookLevel } from './ccxt-types.js'
 import { MAX_INIT_RETRIES, INIT_RETRY_BASE_MS } from './ccxt-types.js'
 import {
@@ -613,7 +614,7 @@ export class CcxtBroker implements IBroker<CcxtBrokerMeta> {
       const markPrice = new Decimal(String(last))
       const marketValue = h.quantity.mul(markPrice)
 
-      result.push({
+      result.push(buildPosition({
         contract: marketToContract(h.market, this.exchangeName),
         currency: normalizeQuoteCurrency(h.market.quote ?? 'USDT'),
         side: 'long',
@@ -621,13 +622,17 @@ export class CcxtBroker implements IBroker<CcxtBrokerMeta> {
         // Placeholder — UTA will replace via wallet-ledger reconstruction.
         avgCost: markPrice.toString(),
         marketPrice: markPrice.toString(),
+        // CCXT pre-computes marketValue per the spot-synthesis path; the
+        // upstream API doesn't give us PnL since we have no historical cost,
+        // so we explicitly pin both pre-computed values to avoid `buildPosition`
+        // re-deriving with avgCost=markPrice (which would yield 0 anyway).
         marketValue: marketValue.toString(),
         unrealizedPnL: '0',
         realizedPnL: '0',
-        // CCXT spot has no IBKR-style multiplier; canonical default is '1'.
+        // CCXT spot has no IBKR-style multiplier — canonical default '1'.
         multiplier: '1',
         avgCostSource: 'wallet',
-      })
+      }))
     }
 
     return result
@@ -727,23 +732,22 @@ export class CcxtBroker implements IBroker<CcxtBrokerMeta> {
         const marketValue = quantity.mul(markPrice)
         const unrealizedPnL = new Decimal(String(p.unrealizedPnl ?? 0))
 
-        result.push({
+        result.push(buildPosition({
           contract: marketToContract(market, this.exchangeName),
           currency: normalizeQuoteCurrency(market.quote ?? 'USDT'),
           side: p.side === 'long' ? 'long' : 'short',
           quantity,
           avgCost: entryPrice.toString(),
           marketPrice: markPrice.toString(),
+          // CCXT exchange already returns notional and PnL — pass through.
           marketValue: marketValue.toString(),
           unrealizedPnL: unrealizedPnL.toString(),
           realizedPnL: new Decimal(String((p as unknown as Record<string, unknown>).realizedPnl ?? 0)).toString(),
-          // CCXT contract size is folded into `quantity = contracts × contractSize`
-          // upstream, so `multiplier` here is canonical 1 (matches IBKR's view of
-          // the position). If a future CCXT exchange exposes a separate IBKR-style
-          // multiplier, plumb it via marketToContract.
+          // contracts × contractSize is folded into `quantity` upstream, so
+          // multiplier is canonical 1 here.
           multiplier: '1',
           avgCostSource: 'broker',
-        })
+        }))
       }
 
       // Spot holdings carry distinct contract identity (no settle suffix

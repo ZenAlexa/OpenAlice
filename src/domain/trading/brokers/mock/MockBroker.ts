@@ -32,6 +32,8 @@ import type {
 } from '../types.js'
 import '../../contract-ext.js'
 import { derivePositionMath } from '../../position-math.js'
+import { buildContract, buildPosition } from '../contract-builder.js'
+import type { SecType } from '../../contract-discipline.js'
 
 // ==================== Helpers ====================
 
@@ -403,27 +405,16 @@ export class MockBroker implements IBroker {
     const result: Position[] = []
     for (const pos of this._positions.values()) {
       const price = pos.marketPriceOverride ?? this._markPriceFor(pos.contract) ?? pos.avgCost
-      const multiplier = pos.contract.multiplier || '1'
-      const { marketValue, unrealizedPnL } = derivePositionMath({
-        quantity: pos.quantity,
-        marketPrice: price,
-        avgCost: pos.avgCost,
-        multiplier,
-        side: pos.side,
-      })
-      result.push({
+      result.push(buildPosition({
         contract: pos.contract,
         currency: pos.contract.currency || 'USD',
         side: pos.side,
         quantity: pos.quantity,
         avgCost: pos.avgCost.toString(),
         marketPrice: price.toString(),
-        marketValue,
-        unrealizedPnL,
         realizedPnL: '0',
-        multiplier,
         ...(pos.avgCostSource && { avgCostSource: pos.avgCostSource }),
-      })
+      }))
     }
     return result
   }
@@ -576,16 +567,18 @@ export class MockBroker implements IBroker {
    * options + futures + FOP positions render correctly downstream.
    */
   private _buildContract(nativeKey: string, partial: Partial<Contract> | undefined): Contract {
-    const c = new Contract()
-    c.symbol = partial?.symbol ?? nativeKey
-    c.localSymbol = partial?.localSymbol ?? nativeKey
-    c.secType = partial?.secType ?? 'CRYPTO'
-    c.exchange = partial?.exchange ?? 'MOCK'
-    c.currency = partial?.currency ?? 'USD'
-    if (partial?.lastTradeDateOrContractMonth) c.lastTradeDateOrContractMonth = partial.lastTradeDateOrContractMonth
-    if (partial?.strike != null && partial.strike !== UNSET_DOUBLE) c.strike = partial.strike
-    if (partial?.right) c.right = partial.right
-    if (partial?.multiplier) c.multiplier = partial.multiplier
+    const right = partial?.right
+    const c = buildContract({
+      symbol: partial?.symbol || nativeKey,
+      secType: (partial?.secType as SecType) || 'CRYPTO',
+      exchange: partial?.exchange || 'MOCK',
+      currency: partial?.currency || 'USD',
+      localSymbol: partial?.localSymbol || nativeKey,
+      ...(partial?.lastTradeDateOrContractMonth && { lastTradeDateOrContractMonth: partial.lastTradeDateOrContractMonth }),
+      ...(partial?.strike != null && partial.strike !== UNSET_DOUBLE && { strike: partial.strike }),
+      ...(right === 'C' || right === 'P' || right === 'CALL' || right === 'PUT' ? { right } : {}),
+      ...(partial?.multiplier && { multiplier: partial.multiplier }),
+    })
     this._rememberContract(c)
     return c
   }
