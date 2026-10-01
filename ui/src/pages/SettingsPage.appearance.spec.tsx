@@ -80,8 +80,9 @@ describe('AppearanceSection palette pair editor', () => {
     expect(screen.getByText('Current Day palette: Paper')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Edit Day palette: Paper' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Windows 98' }))
-    expect(screen.getByText('Current Day palette: Windows Classic')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Broker Classic' }))
+    expect(screen.getByText('Current Day palette: Paper')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Use recommended colors' }))
     fireEvent.click(screen.getByRole('button', { name: 'Use saved colors' }))
     expect(useThemeStore.getState().stylePaletteMode).toBe('saved')
     expect(screen.getByText('Current Day palette: Paper')).toBeTruthy()
