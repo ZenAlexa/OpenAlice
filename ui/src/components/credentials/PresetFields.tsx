@@ -61,7 +61,7 @@ export function ModelCombobox({ value, suggestions, onChange, placeholder, ariaL
     </Autocomplete.InputGroup>
     <Autocomplete.Portal>
       <Autocomplete.Positioner align="start" sideOffset={6} collisionPadding={16} className="isolate z-50">
-        <Autocomplete.Popup className={`${choicePopupClass} w-max min-w-[min(var(--anchor-width),var(--available-width))] max-w-[min(32rem,var(--available-width))] data-empty:hidden`}>
+        <Autocomplete.Popup data-slot="autocomplete-content" className={`${choicePopupClass} w-max min-w-[min(var(--anchor-width),var(--available-width))] max-w-[min(32rem,var(--available-width))] data-empty:hidden`}>
           <Autocomplete.List aria-label={suggestionsLabel ?? 'Model suggestions'} className={choiceListClass}>
             {(model: LabeledOption) => <Autocomplete.Item key={model.id} value={model} aria-selected={model.id === value} className={choiceItemClass}>
               <ModelIdentity model={model.id} label={model.label} vendor={vendor} className="flex-1" />
